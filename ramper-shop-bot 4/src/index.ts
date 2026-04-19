@@ -30,9 +30,16 @@ app.use('/', telegramRouter);
 app.use('/', ramperRouter);
 
 // --- Dashboard (static HTML) -----------------------------------------------
-// `dist/` is alongside `public/` after build; in dev tsx runs from src/ so
-// we fall back to ../public.
-const publicDir = path.resolve(__dirname, '..', 'public');
+// At runtime this file is at /app/dist/src/index.js, so ../../public.
+// In dev (tsx from src/), it's /app/src/index.ts, so ../public.
+// Try both and use whichever exists.
+import { existsSync } from 'node:fs';
+const publicCandidates = [
+  path.resolve(__dirname, '..', '..', 'public'),  // production: dist/src/ -> public/
+  path.resolve(__dirname, '..', 'public'),         // dev: src/ -> public/
+];
+const publicDir = publicCandidates.find(existsSync) ?? publicCandidates[0];
+logger.info({ publicDir }, 'serving dashboard from');
 app.use(express.static(publicDir));
 
 // --- Generic error handler --------------------------------------------------
