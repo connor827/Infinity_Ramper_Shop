@@ -11,7 +11,7 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto;
 -- -------------------------------------------------------------------------
 CREATE TABLE merchants (
     id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    email               CITEXT UNIQUE,  -- see CITEXT note below
+    email               TEXT,
     password_hash       TEXT NOT NULL,
     store_name          TEXT NOT NULL,
     store_slug          TEXT UNIQUE NOT NULL,
@@ -33,9 +33,8 @@ CREATE TABLE merchants (
 CREATE INDEX idx_merchants_bot_token ON merchants(bot_token);
 CREATE INDEX idx_merchants_status ON merchants(status);
 
--- CITEXT requires the extension; if preferred, use TEXT + LOWER() index
-CREATE EXTENSION IF NOT EXISTS citext;
-ALTER TABLE merchants ALTER COLUMN email TYPE CITEXT;
+-- Case-insensitive unique email (avoids citext extension dependency)
+CREATE UNIQUE INDEX idx_merchants_email_lower ON merchants (LOWER(email));
 
 -- -------------------------------------------------------------------------
 -- Products — tenant scoped
