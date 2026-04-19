@@ -1,1 +1,654 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Infinity Ramper Shops — Merchant Dashboard</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --surface: #181b24;
+    --surface-2: #1f2330;
+    --border: #2a2f3e;
+    --text: #e8e8ee;
+    --muted: #9095a8;
+    --accent: #7f77dd;
+    --accent-hover: #6f66d0;
+    --danger: #e24b4a;
+    --success: #5dcaa5;
+    --warning: #ef9f27;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+  }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
 
+  .container { max-width: 960px; margin: 0 auto; padding: 24px; }
+  .topbar {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 16px 24px; border-bottom: 1px solid var(--border);
+    background: var(--surface);
+  }
+  .topbar .brand { font-weight: 500; font-size: 16px; }
+  .topbar .user { color: var(--muted); font-size: 13px; }
+  .topbar button { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 13px; margin-left: 12px; }
+  .topbar button:hover { color: var(--text); }
+
+  h1 { font-size: 24px; font-weight: 500; margin: 0 0 8px; }
+  h2 { font-size: 18px; font-weight: 500; margin: 24px 0 12px; }
+  h3 { font-size: 15px; font-weight: 500; margin: 16px 0 8px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
+  p { margin: 0 0 12px; color: var(--muted); }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px;
+    margin-bottom: 16px;
+  }
+
+  label { display: block; margin-bottom: 4px; font-size: 13px; color: var(--muted); }
+  input, textarea, select {
+    width: 100%;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+    color: var(--text);
+    font: inherit;
+    margin-bottom: 12px;
+  }
+  input:focus, textarea:focus, select:focus {
+    outline: none;
+    border-color: var(--accent);
+  }
+  textarea { min-height: 80px; resize: vertical; }
+
+  button.primary, button.secondary {
+    padding: 10px 20px;
+    border-radius: 8px;
+    font: inherit;
+    font-weight: 500;
+    cursor: pointer;
+    border: none;
+  }
+  button.primary { background: var(--accent); color: white; }
+  button.primary:hover { background: var(--accent-hover); }
+  button.primary:disabled { opacity: 0.5; cursor: not-allowed; }
+  button.secondary {
+    background: transparent;
+    color: var(--text);
+    border: 1px solid var(--border);
+  }
+  button.secondary:hover { border-color: var(--muted); }
+
+  .row { display: flex; gap: 12px; align-items: center; }
+  .row > * { flex: 1; }
+
+  .error {
+    background: rgba(226, 75, 74, 0.1);
+    border: 1px solid rgba(226, 75, 74, 0.4);
+    color: #f09595;
+    padding: 12px;
+    border-radius: 8px;
+    margin-bottom: 12px;
+    font-size: 13px;
+  }
+  .success {
+    background: rgba(93, 202, 165, 0.1);
+    border: 1px solid rgba(93, 202, 165, 0.4);
+    color: #5dcaa5;
+    padding: 12px;
+    border-radius: 8px;
+    margin-bottom: 12px;
+    font-size: 13px;
+  }
+
+  table { width: 100%; border-collapse: collapse; }
+  th, td {
+    padding: 10px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+    font-size: 14px;
+  }
+  th { color: var(--muted); font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
+
+  .tabs {
+    display: flex;
+    gap: 4px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 16px;
+  }
+  .tab {
+    padding: 10px 16px;
+    cursor: pointer;
+    color: var(--muted);
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    font-size: 14px;
+  }
+  .tab.active {
+    color: var(--text);
+    border-bottom-color: var(--accent);
+  }
+
+  .steps { display: flex; gap: 8px; margin-bottom: 24px; }
+  .step {
+    flex: 1; padding: 8px 12px;
+    background: var(--surface-2);
+    border-radius: 6px;
+    font-size: 12px;
+    color: var(--muted);
+    text-align: center;
+    border: 1px solid var(--border);
+  }
+  .step.done { color: var(--success); border-color: rgba(93, 202, 165, 0.3); }
+  .step.current { color: var(--accent); border-color: rgba(127, 119, 221, 0.4); }
+
+  .badge {
+    display: inline-block;
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .badge.awaiting { background: rgba(239, 159, 39, 0.15); color: var(--warning); }
+  .badge.paid { background: rgba(93, 202, 165, 0.15); color: var(--success); }
+  .badge.shipped, .badge.delivered { background: rgba(127, 119, 221, 0.15); color: var(--accent); }
+  .badge.cancelled, .badge.refunded { background: rgba(226, 75, 74, 0.15); color: var(--danger); }
+
+  .muted { color: var(--muted); font-size: 13px; }
+  .hidden { display: none !important; }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; word-break: break-all; }
+
+  pre { background: var(--surface-2); padding: 12px; border-radius: 6px; overflow-x: auto; font-size: 12px; }
+</style>
+</head>
+<body>
+
+<div id="topbar" class="topbar hidden">
+  <div class="brand">Infinity Ramper Shops</div>
+  <div>
+    <span id="userEmail" class="user"></span>
+    <button id="logoutBtn">log out</button>
+  </div>
+</div>
+
+<div class="container">
+
+<!-- Auth screen -->
+<div id="authScreen">
+  <div class="card" style="max-width: 440px; margin: 40px auto;">
+    <h1>Merchant dashboard</h1>
+    <p>Sign in or create an account to manage your Telegram shop.</p>
+    <div class="tabs">
+      <div class="tab active" data-tab="login">log in</div>
+      <div class="tab" data-tab="signup">sign up</div>
+    </div>
+    <div id="authError"></div>
+
+    <form id="loginForm">
+      <label>Email</label>
+      <input type="email" id="loginEmail" required>
+      <label>Password</label>
+      <input type="password" id="loginPassword" required>
+      <button class="primary" type="submit">log in</button>
+    </form>
+
+    <form id="signupForm" class="hidden">
+      <label>Email</label>
+      <input type="email" id="signupEmail" required>
+      <label>Password <span class="muted">(min 8 chars)</span></label>
+      <input type="password" id="signupPassword" required minlength="8">
+      <label>Store name</label>
+      <input type="text" id="signupStoreName" required minlength="2" maxlength="80">
+      <button class="primary" type="submit">create account</button>
+    </form>
+  </div>
+</div>
+
+<!-- App screen -->
+<div id="appScreen" class="hidden">
+  <div id="globalError"></div>
+  <div id="globalSuccess"></div>
+
+  <div class="steps">
+    <div class="step" data-step="bot">1. Bot</div>
+    <div class="step" data-step="wallet">2. Wallet</div>
+    <div class="step" data-step="store">3. Store</div>
+    <div class="step" data-step="products">4. Products</div>
+    <div class="step" data-step="live">5. Live</div>
+  </div>
+
+  <div class="tabs">
+    <div class="tab active" data-maintab="onboarding">onboarding</div>
+    <div class="tab" data-maintab="products">products</div>
+    <div class="tab" data-maintab="orders">orders</div>
+    <div class="tab" data-maintab="settings">settings</div>
+  </div>
+
+  <!-- Onboarding tab -->
+  <div id="tabOnboarding">
+    <div class="card">
+      <h2>Step 1 — Connect your Telegram bot</h2>
+      <p>Talk to <a href="https://t.me/BotFather" target="_blank" rel="noopener">@BotFather</a> on Telegram, create a new bot, and paste the token here. We'll register the webhook automatically.</p>
+      <form id="botForm">
+        <label>Bot token</label>
+        <input type="text" id="botToken" placeholder="1234567890:AAH..." autocomplete="off">
+        <button class="primary" type="submit">save bot token</button>
+      </form>
+      <div id="botStatus" class="muted" style="margin-top: 8px;"></div>
+    </div>
+
+    <div class="card">
+      <h2>Step 2 — Connect your payout wallet</h2>
+      <p>Paste the message below into MetaMask (or any Polygon wallet), sign it, and paste the signature back. This proves you own the wallet that will receive USDC payouts.</p>
+      <div id="walletMessageBox" class="mono" style="background: var(--surface-2); padding: 12px; border-radius: 6px; margin-bottom: 12px;"></div>
+      <form id="walletForm">
+        <label>Polygon wallet address</label>
+        <input type="text" id="walletAddress" placeholder="0x..." autocomplete="off">
+        <label>Signature</label>
+        <input type="text" id="walletSignature" placeholder="0x..." autocomplete="off">
+        <button class="primary" type="submit">verify wallet</button>
+      </form>
+      <div id="walletStatus" class="muted" style="margin-top: 8px;"></div>
+    </div>
+
+    <div class="card">
+      <h2>Step 3 — Store settings</h2>
+      <form id="storeForm">
+        <label>Store currency <span class="muted">(prices will be quoted in this)</span></label>
+        <select id="storeCurrency">
+          <option value="USD">USD</option>
+          <option value="EUR">EUR</option>
+          <option value="GBP">GBP</option>
+          <option value="CAD">CAD</option>
+          <option value="AUD">AUD</option>
+          <option value="INR">INR</option>
+        </select>
+        <label>Your Telegram user ID <span class="muted">(for order notifications — get it from <a href="https://t.me/userinfobot" target="_blank" rel="noopener">@userinfobot</a>)</span></label>
+        <input type="number" id="adminTelegramId" placeholder="123456789">
+        <button class="primary" type="submit">save settings</button>
+      </form>
+    </div>
+
+    <div class="card">
+      <h2>Step 4 — Add products</h2>
+      <p>Add a few products to get started. You can add more from the Products tab.</p>
+      <button class="primary" onclick="switchMainTab('products')">go to products</button>
+    </div>
+
+    <div class="card">
+      <h2>Step 5 — Go live</h2>
+      <p>Once you have a bot, wallet, and at least one product, activate your shop.</p>
+      <button id="activateBtn" class="primary">activate shop</button>
+    </div>
+  </div>
+
+  <!-- Products tab -->
+  <div id="tabProducts" class="hidden">
+    <div class="card">
+      <h2>Add product</h2>
+      <form id="productForm">
+        <label>Name</label>
+        <input type="text" id="productName" required>
+        <label>Description <span class="muted">(optional)</span></label>
+        <textarea id="productDescription"></textarea>
+        <div class="row">
+          <div>
+            <label>Price</label>
+            <input type="number" id="productPrice" step="0.01" min="0.01" required>
+          </div>
+          <div>
+            <label>Stock</label>
+            <input type="number" id="productStock" min="0" value="10" required>
+          </div>
+        </div>
+        <label>Image URL <span class="muted">(optional)</span></label>
+        <input type="url" id="productImage" placeholder="https://...">
+        <button class="primary" type="submit">add product</button>
+      </form>
+    </div>
+    <div class="card">
+      <h2>Your products</h2>
+      <table>
+        <thead><tr><th>Name</th><th>Price</th><th>Stock</th><th>Status</th></tr></thead>
+        <tbody id="productsTable"><tr><td colspan="4" class="muted">loading...</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Orders tab -->
+  <div id="tabOrders" class="hidden">
+    <div class="card">
+      <h2>Recent orders</h2>
+      <table>
+        <thead><tr><th>#</th><th>Total</th><th>Status</th><th>Created</th></tr></thead>
+        <tbody id="ordersTable"><tr><td colspan="4" class="muted">loading...</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Settings tab -->
+  <div id="tabSettings" class="hidden">
+    <div class="card">
+      <h2>Account</h2>
+      <div id="settingsInfo" class="muted"></div>
+    </div>
+    <div class="card">
+      <h2>Bot</h2>
+      <div id="botInfo" class="muted"></div>
+      <button id="disconnectBotBtn" class="secondary" style="margin-top: 12px;">disconnect bot</button>
+    </div>
+  </div>
+</div>
+
+</div>
+
+<script>
+'use strict';
+
+const API = '/api';
+let token = localStorage.getItem('ramper_token');
+let me = null;
+
+// ----- auth screen ---------------------------------------------------------
+document.querySelectorAll('#authScreen .tab').forEach(t => {
+  t.addEventListener('click', () => {
+    document.querySelectorAll('#authScreen .tab').forEach(x => x.classList.remove('active'));
+    t.classList.add('active');
+    const which = t.dataset.tab;
+    document.getElementById('loginForm').classList.toggle('hidden', which !== 'login');
+    document.getElementById('signupForm').classList.toggle('hidden', which !== 'signup');
+  });
+});
+
+document.getElementById('loginForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  clearAuthError();
+  try {
+    const r = await api('POST', '/auth/login', {
+      email: val('loginEmail'),
+      password: val('loginPassword'),
+    });
+    token = r.token;
+    localStorage.setItem('ramper_token', token);
+    await bootApp();
+  } catch (err) { authError(err.message); }
+});
+
+document.getElementById('signupForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  clearAuthError();
+  try {
+    const r = await api('POST', '/auth/signup', {
+      email: val('signupEmail'),
+      password: val('signupPassword'),
+      store_name: val('signupStoreName'),
+    });
+    token = r.token;
+    localStorage.setItem('ramper_token', token);
+    await bootApp();
+  } catch (err) { authError(err.message); }
+});
+
+document.getElementById('logoutBtn').addEventListener('click', () => {
+  localStorage.removeItem('ramper_token');
+  token = null; me = null;
+  document.getElementById('topbar').classList.add('hidden');
+  document.getElementById('appScreen').classList.add('hidden');
+  document.getElementById('authScreen').classList.remove('hidden');
+});
+
+// ----- main tabs -----------------------------------------------------------
+document.querySelectorAll('[data-maintab]').forEach(t => {
+  t.addEventListener('click', () => switchMainTab(t.dataset.maintab));
+});
+function switchMainTab(name) {
+  document.querySelectorAll('[data-maintab]').forEach(x =>
+    x.classList.toggle('active', x.dataset.maintab === name));
+  ['onboarding', 'products', 'orders', 'settings'].forEach(n =>
+    document.getElementById('tab' + cap(n)).classList.toggle('hidden', n !== name));
+  if (name === 'products') loadProducts();
+  if (name === 'orders') loadOrders();
+  if (name === 'settings') loadSettings();
+}
+
+// ----- onboarding forms ----------------------------------------------------
+document.getElementById('botForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const btn = e.target.querySelector('button');
+  btn.disabled = true;
+  try {
+    const r = await api('POST', '/onboarding/bot', { bot_token: val('botToken') });
+    success(`Bot @${r.username} connected.`);
+    document.getElementById('botToken').value = '';
+    await refreshMe();
+  } catch (err) { error(err.message); }
+  finally { btn.disabled = false; }
+});
+
+document.getElementById('walletForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const btn = e.target.querySelector('button');
+  btn.disabled = true;
+  const message = document.getElementById('walletMessageBox').textContent;
+  try {
+    await api('POST', '/onboarding/wallet', {
+      address: val('walletAddress'),
+      signature: val('walletSignature'),
+      message,
+    });
+    success('Wallet verified.');
+    document.getElementById('walletSignature').value = '';
+    await refreshMe();
+  } catch (err) { error(err.message); }
+  finally { btn.disabled = false; }
+});
+
+document.getElementById('storeForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const btn = e.target.querySelector('button');
+  btn.disabled = true;
+  try {
+    await api('PATCH', '/store', {
+      currency_code: val('storeCurrency'),
+      admin_telegram_id: Number(val('adminTelegramId')) || undefined,
+    });
+    success('Settings saved.');
+    await refreshMe();
+  } catch (err) { error(err.message); }
+  finally { btn.disabled = false; }
+});
+
+document.getElementById('activateBtn').addEventListener('click', async () => {
+  try {
+    await api('POST', '/onboarding/activate', {});
+    success('Shop is live. Buyers can now order through your bot.');
+    await refreshMe();
+  } catch (err) { error(err.message); }
+});
+
+document.getElementById('productForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const btn = e.target.querySelector('button');
+  btn.disabled = true;
+  try {
+    await api('POST', '/products', {
+      name: val('productName'),
+      description: val('productDescription') || undefined,
+      price: Number(val('productPrice')),
+      stock: Number(val('productStock')),
+      image_url: val('productImage') || undefined,
+    });
+    success('Product added.');
+    e.target.reset();
+    document.getElementById('productStock').value = '10';
+    loadProducts();
+  } catch (err) { error(err.message); }
+  finally { btn.disabled = false; }
+});
+
+document.getElementById('disconnectBotBtn').addEventListener('click', async () => {
+  if (!confirm('Disconnect your bot? Buyers will no longer be able to message it until you reconnect.')) return;
+  try {
+    await api('POST', '/bot/disconnect', {});
+    success('Bot disconnected.');
+    await refreshMe();
+  } catch (err) { error(err.message); }
+});
+
+// ----- loaders -------------------------------------------------------------
+async function loadProducts() {
+  try {
+    const products = await api('GET', '/products');
+    const tbody = document.getElementById('productsTable');
+    tbody.innerHTML = '';
+    if (!products.length) {
+      tbody.innerHTML = '<tr><td colspan="4" class="muted">no products yet</td></tr>';
+      return;
+    }
+    for (const p of products) {
+      const tr = document.createElement('tr');
+      tr.appendChild(td(p.name));
+      tr.appendChild(td(`${p.currency_code} ${Number(p.price).toFixed(2)}`));
+      tr.appendChild(td(String(p.stock)));
+      tr.appendChild(td(p.status));
+      tbody.appendChild(tr);
+    }
+  } catch (err) { error(err.message); }
+}
+
+async function loadOrders() {
+  try {
+    const orders = await api('GET', '/orders');
+    const tbody = document.getElementById('ordersTable');
+    tbody.innerHTML = '';
+    if (!orders.length) {
+      tbody.innerHTML = '<tr><td colspan="4" class="muted">no orders yet</td></tr>';
+      return;
+    }
+    for (const o of orders) {
+      const tr = document.createElement('tr');
+      tr.appendChild(td('#' + o.order_number));
+      tr.appendChild(td(`${o.currency_code} ${Number(o.total).toFixed(2)}`));
+      const statusTd = document.createElement('td');
+      const badge = document.createElement('span');
+      badge.className = 'badge ' + o.status.replace('_', '');
+      badge.textContent = o.status.replace('_', ' ');
+      statusTd.appendChild(badge);
+      tr.appendChild(statusTd);
+      tr.appendChild(td(new Date(o.created_at).toLocaleString()));
+      tbody.appendChild(tr);
+    }
+  } catch (err) { error(err.message); }
+}
+
+function loadSettings() {
+  if (!me) return;
+  document.getElementById('settingsInfo').innerHTML =
+    `<div><strong>Email:</strong> ${esc(me.email)}</div>` +
+    `<div><strong>Store:</strong> ${esc(me.store_name)}</div>` +
+    `<div><strong>Slug:</strong> <code>${esc(me.store_slug)}</code></div>` +
+    `<div><strong>Status:</strong> ${esc(me.status)}</div>` +
+    `<div><strong>Payout wallet:</strong> <span class="mono">${esc(me.payout_wallet || '—')}</span></div>`;
+  document.getElementById('botInfo').innerHTML = me.bot_username
+    ? `<div>Connected as <strong>@${esc(me.bot_username)}</strong></div>`
+    : '<div>No bot connected.</div>';
+}
+
+// ----- helpers -------------------------------------------------------------
+async function api(method, path, body) {
+  const headers = { 'content-type': 'application/json' };
+  if (token) headers.authorization = 'Bearer ' + token;
+  const res = await fetch(API + path, {
+    method,
+    headers,
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(typeof data.error === 'string' ? data.error : `${method} ${path} — ${res.status}`);
+  return data;
+}
+
+function val(id) { return document.getElementById(id).value.trim(); }
+function td(text) { const e = document.createElement('td'); e.textContent = text; return e; }
+function cap(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
+function esc(s) { return String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); }
+
+function error(msg) { showBanner('globalError', 'error', msg); }
+function success(msg) { showBanner('globalSuccess', 'success', msg); }
+function showBanner(id, cls, msg) {
+  const el = document.getElementById(id);
+  el.innerHTML = `<div class="${cls}">${esc(msg)}</div>`;
+  setTimeout(() => { el.innerHTML = ''; }, 5000);
+}
+function authError(msg) { document.getElementById('authError').innerHTML = `<div class="error">${esc(msg)}</div>`; }
+function clearAuthError() { document.getElementById('authError').innerHTML = ''; }
+
+// ----- boot ----------------------------------------------------------------
+async function refreshMe() {
+  me = await api('GET', '/me');
+  document.getElementById('userEmail').textContent = me.email || '';
+
+  // Step badges
+  const order = ['bot', 'wallet', 'store', 'products', 'live'];
+  const currentIdx = order.indexOf(me.onboarding_step);
+  document.querySelectorAll('[data-step]').forEach(el => {
+    const idx = order.indexOf(el.dataset.step);
+    el.classList.remove('done', 'current');
+    if (me.status === 'active') el.classList.add('done');
+    else if (idx < currentIdx) el.classList.add('done');
+    else if (idx === currentIdx) el.classList.add('current');
+  });
+
+  // Bot status
+  document.getElementById('botStatus').textContent = me.bot_username
+    ? `Connected: @${me.bot_username}`
+    : 'Not connected';
+
+  // Wallet status + sign message
+  const signMessage =
+    `Verify ownership for Infinity Ramper Shops\n\nMerchant: ${me.id}\nTimestamp: ${Date.now()}`;
+  document.getElementById('walletMessageBox').textContent = signMessage;
+  document.getElementById('walletStatus').textContent = me.payout_wallet
+    ? `Connected: ${me.payout_wallet}`
+    : 'Not connected';
+
+  // Store settings current values
+  if (me.currency_code) document.getElementById('storeCurrency').value = me.currency_code;
+
+  // Activate button state
+  document.getElementById('activateBtn').disabled = me.status === 'active';
+  document.getElementById('activateBtn').textContent =
+    me.status === 'active' ? 'already live' : 'activate shop';
+}
+
+async function bootApp() {
+  try {
+    await refreshMe();
+  } catch (err) {
+    localStorage.removeItem('ramper_token');
+    token = null;
+    document.getElementById('authScreen').classList.remove('hidden');
+    document.getElementById('appScreen').classList.add('hidden');
+    document.getElementById('topbar').classList.add('hidden');
+    return;
+  }
+  document.getElementById('authScreen').classList.add('hidden');
+  document.getElementById('appScreen').classList.remove('hidden');
+  document.getElementById('topbar').classList.remove('hidden');
+  switchMainTab('onboarding');
+}
+
+if (token) bootApp();
+</script>
+</body>
+</html>
