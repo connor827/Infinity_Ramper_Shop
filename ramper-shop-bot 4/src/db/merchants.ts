@@ -15,7 +15,10 @@ export async function getMerchantByBotToken(token: string): Promise<Merchant | n
 }
 
 export async function getMerchantByEmail(email: string): Promise<Merchant | null> {
-  const { rows } = await query<Merchant>('SELECT * FROM merchants WHERE email = $1', [email]);
+  const { rows } = await query<Merchant>(
+    'SELECT * FROM merchants WHERE LOWER(email) = LOWER($1)',
+    [email]
+  );
   return rows[0] ?? null;
 }
 
