@@ -615,9 +615,13 @@ async function refreshMe() {
     : 'Not connected';
 
   // Wallet status + sign message
-  const signMessage =
-    `Verify ownership for Infinity Ramper Shops\n\nMerchant: ${me.id}\nTimestamp: ${Date.now()}`;
-  document.getElementById('walletMessageBox').textContent = signMessage;
+  // Only generate the message once per session — otherwise the timestamp
+  // changes between displaying and signing, and the signature won't match.
+  const box = document.getElementById('walletMessageBox');
+  if (!box.textContent.trim()) {
+    box.textContent =
+      `Verify ownership for Infinity Ramper Shops\n\nMerchant: ${me.id}\nTimestamp: ${Date.now()}`;
+  }
   document.getElementById('walletStatus').textContent = me.payout_wallet
     ? `Connected: ${me.payout_wallet}`
     : 'Not connected';
