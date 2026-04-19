@@ -1,6 +1,6 @@
 # Infinity Ramper Shops
 
-Multi-tenant Telegram shop SaaS. Merchants sign up in a web dashboard, connect a Polygon wallet, register a Telegram bot, add products, go live — all self-serve. Buyers shop inside the merchant's bot and pay via Infinity Ramper (card, Apple Pay, Google Pay, bank transfer, or crypto). Ramper settles to the merchant's wallet in USDC and splits the platform fee on-chain via its affiliate mechanism.
+Multi-tenant Telegram shop SaaS. Merchants sign up in a web dashboard, connect a Polygon wallet, register a Telegram bot, add products, go live — all self-serve. Buyers shop ins ide the merchant's bot and pay via Infinity Ramper (card, Apple Pay, Google Pay, bank transfer, or crypto). Ramper settles to the merchant's wallet in USDC and splits the platform fee on-chain via its affiliate mechanism.
 
 ## Architecture
 
