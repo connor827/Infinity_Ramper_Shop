@@ -249,14 +249,15 @@
 
     <div class="card">
       <h2>Step 2 — Connect your payout wallet</h2>
-      <p>Paste the message below into MetaMask (or any Polygon wallet), sign it, and paste the signature back. This proves you own the wallet that will receive USDC payouts.</p>
-      <div id="walletMessageBox" class="mono" style="background: var(--surface-2); padding: 12px; border-radius: 6px; margin-bottom: 12px;"></div>
+      <p>Enter the Polygon address that will receive USDC payouts. Optionally, sign the message below with your wallet to verify ownership — recommended when you're ready, but skippable for now.</p>
       <form id="walletForm">
         <label>Polygon wallet address</label>
         <input type="text" id="walletAddress" placeholder="0x..." autocomplete="off">
-        <label>Signature</label>
-        <input type="text" id="walletSignature" placeholder="0x..." autocomplete="off">
-        <button class="primary" type="submit">verify wallet</button>
+        <label>Message to sign <span class="muted">(optional — see below)</span></label>
+        <div id="walletMessageBox" class="mono" style="background: var(--surface-2); padding: 12px; border-radius: 6px; margin-bottom: 12px;"></div>
+        <label>Signature <span class="muted">(optional — leave blank to skip verification)</span></label>
+        <input type="text" id="walletSignature" placeholder="0x... (optional)" autocomplete="off">
+        <button class="primary" type="submit">save wallet</button>
       </form>
       <div id="walletStatus" class="muted" style="margin-top: 8px;"></div>
     </div>
@@ -439,14 +440,16 @@ document.getElementById('walletForm').addEventListener('submit', async (e) => {
   e.preventDefault();
   const btn = e.target.querySelector('button');
   btn.disabled = true;
+  const signature = val('walletSignature');
   const message = document.getElementById('walletMessageBox').textContent;
+  const body = { address: val('walletAddress') };
+  if (signature) {
+    body.signature = signature;
+    body.message = message;
+  }
   try {
-    await api('POST', '/onboarding/wallet', {
-      address: val('walletAddress'),
-      signature: val('walletSignature'),
-      message,
-    });
-    success('Wallet verified.');
+    const r = await api('POST', '/onboarding/wallet', body);
+    success(r.verified ? 'Wallet verified.' : 'Wallet saved (unverified — add signature later to verify).');
     document.getElementById('walletSignature').value = '';
     await refreshMe();
   } catch (err) { error(err.message); }
