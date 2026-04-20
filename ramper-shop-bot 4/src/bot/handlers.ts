@@ -33,63 +33,58 @@ export function registerHandlers(bot: Bot<BotContext>): void {
   bot.command('start', async (ctx) => {
     const name = ctx.from?.first_name ?? 'there';
     await ctx.reply(
-      `Welcome to *${escapeMd(ctx.merchant.store_name)}*, ${escapeMd(name)}\\.\n\n` +
-        `Tap a button to browse\\.`,
-      {
-        parse_mode: 'MarkdownV2',
-        reply_markup: mainMenu(),
-      }
+      `Welcome to ${ctx.merchant.store_name}, ${name}.\n\nTap a button to browse.`,
+      { reply_markup: mainMenu() }
     );
   });
 
   // ----- Main menu --------------------------------------------------------
   bot.callbackQuery('menu:shop', async (ctx) => {
-    await ctx.answerCallbackQuery();
+    await safeAnswer(ctx);
     await showCatalogue(ctx);
   });
 
   bot.callbackQuery('menu:cart', async (ctx) => {
-    await ctx.answerCallbackQuery();
+    await safeAnswer(ctx);
     await showCart(ctx);
   });
 
   bot.callbackQuery('menu:help', async (ctx) => {
-    await ctx.answerCallbackQuery();
-    await ctx.editMessageText(
-      `*Help*\n\n` +
+    await safeAnswer(ctx);
+    await safeEdit(
+      ctx,
+      `Help\n\n` +
         `\u2022 Browse products and add them to your cart\n` +
-        `\u2022 Checkout via Infinity Ramper \\- pay with card, Apple Pay, Google Pay, bank transfer, or crypto\n` +
+        `\u2022 Checkout via Infinity Ramper - pay with card, Apple Pay, Google Pay, bank transfer, or crypto\n` +
         `\u2022 You'll get a confirmation here once payment lands`,
-      {
-        parse_mode: 'MarkdownV2',
-        reply_markup: new InlineKeyboard().text('back', 'menu:home'),
-      }
+      new InlineKeyboard().text('back', 'menu:home')
     );
   });
 
   bot.callbackQuery('menu:home', async (ctx) => {
-    await ctx.answerCallbackQuery();
-    await ctx.editMessageText(`Welcome to *${escapeMd(ctx.merchant.store_name)}*\\.`, {
-      parse_mode: 'MarkdownV2',
-      reply_markup: mainMenu(),
-    });
+    await safeAnswer(ctx);
+    await safeEdit(ctx, `Welcome to ${ctx.merchant.store_name}.`, mainMenu());
   });
 
   // ----- Product view -----------------------------------------------------
   bot.callbackQuery(/^product:(.+)$/, async (ctx) => {
     const productId = ctx.match[1];
-    await ctx.answerCallbackQuery();
+    await safeAnswer(ctx);
     const product = await getProduct(ctx.merchant.id, productId);
     if (!product) {
-      await ctx.editMessageText('That product is no longer available.');
+      await safeEdit(
+        ctx,
+        'That product is no longer available.',
+        new InlineKeyboard().text('back', 'menu:shop')
+      );
       return;
     }
 
     const caption =
-      `*${escapeMd(product.name)}*\n\n` +
-      (product.description ? `${escapeMd(product.description)}\n\n` : '') +
-      `*Price:* ${formatMoney(product.price, product.currency_code)}\n` +
-      `*Stock:* ${product.stock}`;
+      `${product.name}\n\n` +
+      (product.description ? `${product.description}\n\n` : '') +
+      `Price: ${formatMoney(product.price, product.currency_code)}\n` +
+      `Stock: ${product.stock}`;
 
     const kb = new InlineKeyboard()
       .text('add to cart', `add:${product.id}:1`)
@@ -98,17 +93,13 @@ export function registerHandlers(bot: Bot<BotContext>): void {
 
     if (product.image_url) {
       try {
-        await ctx.replyWithPhoto(product.image_url, {
-          caption,
-          parse_mode: 'MarkdownV2',
-          reply_markup: kb,
-        });
+        await ctx.replyWithPhoto(product.image_url, { caption, reply_markup: kb });
         return;
       } catch {
-        // Fall through if the image URL is unreachable
+        // fall through to text if image URL is unreachable
       }
     }
-    await ctx.editMessageText(caption, { parse_mode: 'MarkdownV2', reply_markup: kb });
+    await safeEdit(ctx, caption, kb);
   });
 
   // ----- Add to cart ------------------------------------------------------
@@ -117,31 +108,28 @@ export function registerHandlers(bot: Bot<BotContext>): void {
     const qty = parseInt(qtyStr, 10);
     try {
       await addToCart(ctx.merchant.id, ctx.buyerId, productId, qty);
-      await ctx.answerCallbackQuery({ text: 'Added to cart' });
+      await safeAnswer(ctx, 'Added to cart');
     } catch (err) {
-      await ctx.answerCallbackQuery({
-        text: err instanceof Error ? err.message : 'Could not add',
-        show_alert: true,
-      });
+      await safeAnswer(ctx, err instanceof Error ? err.message : 'Could not add', true);
     }
   });
 
   bot.callbackQuery(/^remove:([a-f0-9-]+)$/, async (ctx) => {
     await removeCartItem(ctx.buyerId, ctx.match[1]);
-    await ctx.answerCallbackQuery({ text: 'Removed' });
+    await safeAnswer(ctx, 'Removed');
     await showCart(ctx);
   });
 
   // ----- Checkout: collect shipping via session ---------------------------
   bot.callbackQuery('cart:checkout', async (ctx) => {
-    await ctx.answerCallbackQuery();
+    await safeAnswer(ctx);
     ctx.session.checkout = { step: 'name', data: {} };
     await ctx.reply('Shipping details\n\nFull name?');
   });
 
   bot.callbackQuery('cart:clear', async (ctx) => {
     await clearCart(ctx.buyerId);
-    await ctx.answerCallbackQuery({ text: 'Cart cleared' });
+    await safeAnswer(ctx, 'Cart cleared');
     await showCart(ctx);
   });
 
@@ -211,17 +199,19 @@ export function registerHandlers(bot: Bot<BotContext>): void {
 
   bot.callbackQuery('checkout:cancel', async (ctx) => {
     ctx.session.checkout = undefined;
-    await ctx.answerCallbackQuery({ text: 'Cancelled' });
+    await safeAnswer(ctx, 'Cancelled');
   });
 
   bot.callbackQuery('checkout:confirm', async (ctx) => {
-    await ctx.answerCallbackQuery();
+    await safeAnswer(ctx);
     const flow = ctx.session.checkout;
     if (!flow || flow.step !== 'confirm') return;
     ctx.session.checkout = undefined;
 
     if (!ctx.merchant.payout_wallet) {
-      await ctx.reply('This store isn\'t ready to accept payments yet. Ask the merchant to finish setup.');
+      await ctx.reply(
+        'This store isn\'t ready to accept payments yet. Ask the merchant to finish setup.'
+      );
       return;
     }
 
@@ -236,7 +226,6 @@ export function registerHandlers(bot: Bot<BotContext>): void {
         email: flow.data.email,
       };
 
-      // 1) Create the order in the merchant's currency
       const order = await createOrderFromCart(
         ctx.merchant.id,
         ctx.buyerId,
@@ -245,14 +234,11 @@ export function registerHandlers(bot: Bot<BotContext>): void {
         ctx.merchant.currency_code
       );
 
-      // 2) Reserve a Ramper temp wallet scoped to this order.
-      //    If PLATFORM_AFFILIATE_WALLET is set, Ramper splits on-chain.
       const ramperWallet = await ramperClient.createWallet({
         merchantPayoutWallet: ctx.merchant.payout_wallet,
         orderId: order.id,
       });
 
-      // 3) Build the Smart Hosted checkout URL
       const paymentUrl = ramperClient.buildCheckoutUrl({
         addressIn: ramperWallet.address_in,
         amount: Number(order.total),
@@ -260,7 +246,6 @@ export function registerHandlers(bot: Bot<BotContext>): void {
         email: flow.data.email!,
       });
 
-      // 4) Persist Ramper linkage on the order
       await attachRamperToOrder(order.id, {
         ramper_address_in: ramperWallet.address_in,
         ramper_polygon_addr: ramperWallet.polygon_address_in,
@@ -271,9 +256,7 @@ export function registerHandlers(bot: Bot<BotContext>): void {
         `Order #${order.order_number} created\n\n` +
           `Total: ${formatMoney(String(order.total), order.currency_code)}\n\n` +
           `Tap below to pay. You'll get a confirmation here once payment lands.`,
-        {
-          reply_markup: new InlineKeyboard().url('Pay now', paymentUrl),
-        }
+        { reply_markup: new InlineKeyboard().url('Pay now', paymentUrl) }
       );
     } catch (err) {
       logger.error({ err }, 'checkout failed');
@@ -291,22 +274,21 @@ export function registerHandlers(bot: Bot<BotContext>): void {
 async function showCatalogue(ctx: BotContext): Promise<void> {
   const products = await listActiveProducts(ctx.merchant.id);
   if (products.length === 0) {
-    await ctx.editMessageText('No products available right now.', {
-      reply_markup: new InlineKeyboard().text('back', 'menu:home'),
-    });
+    await safeEdit(
+      ctx,
+      'No products available right now.',
+      new InlineKeyboard().text('back', 'menu:home')
+    );
     return;
   }
 
   const kb = new InlineKeyboard();
   for (const p of products) {
-    kb.text(
-      `${p.name} - ${formatMoneyForButton(p.price, p.currency_code)}`,
-      `product:${p.id}`
-    ).row();
+    kb.text(`${p.name} - ${formatMoney(p.price, p.currency_code)}`, `product:${p.id}`).row();
   }
   kb.text('back', 'menu:home');
 
-  await ctx.editMessageText(`*Shop*`, { parse_mode: 'MarkdownV2', reply_markup: kb });
+  await safeEdit(ctx, 'Shop', kb);
 }
 
 async function showCart(ctx: BotContext): Promise<void> {
@@ -353,10 +335,39 @@ function formatMoney(amount: string, currency: string): string {
   return `${currency} ${n.toFixed(2)}`;
 }
 
-function formatMoneyForButton(amount: string, currency: string): string {
-  return formatMoney(amount, currency);
+// ---------------------------------------------------------------------------
+// Safe wrappers — never throw on stale callback queries or edits.
+// These let the bot keep running even when individual Telegram calls fail.
+// ---------------------------------------------------------------------------
+
+async function safeAnswer(
+  ctx: BotContext,
+  text?: string,
+  showAlert = false
+): Promise<void> {
+  try {
+    await ctx.answerCallbackQuery(text ? { text, show_alert: showAlert } : undefined);
+  } catch (err) {
+    logger.warn({ err }, 'answerCallbackQuery failed (non-fatal)');
+  }
 }
 
-function escapeMd(s: string): string {
-  return s.replace(/[_*[\]()~`>#+\-=|{}.!\\]/g, '\\$&');
+async function safeEdit(
+  ctx: BotContext,
+  text: string,
+  replyMarkup?: InlineKeyboard
+): Promise<void> {
+  try {
+    await ctx.editMessageText(
+      text,
+      replyMarkup ? { reply_markup: replyMarkup } : undefined
+    );
+  } catch (err) {
+    logger.warn({ err }, 'editMessageText failed, falling back to reply');
+    try {
+      await ctx.reply(text, replyMarkup ? { reply_markup: replyMarkup } : undefined);
+    } catch (err2) {
+      logger.error({ err: err2 }, 'reply fallback also failed');
+    }
+  }
 }
