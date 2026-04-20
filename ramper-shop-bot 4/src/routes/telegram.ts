@@ -7,17 +7,14 @@ import { logger } from '../config/logger.js';
 
 export const telegramRouter = Router();
 
+// Cache merchant lookups briefly so every webhook doesn't hit the DB.
+// Tokens are stable per merchant; cache for 5 minutes.
+const merchantCache = new Map<string, { merchantId: string; expiresAt: number }>();
+const MERCHANT_CACHE_TTL_MS = 5 * 60 * 1000;
+
 /**
  * The Telegram webhook URL is registered as:
  *   https://your-domain.com/webhook/telegram/<bot_token>
- *
- * We extract the bot token from the URL, look up the corresponding merchant,
- * and dispatch the update to that merchant's Bot instance.
- *
- * Security:
- *  - The bot token itself is a shared secret; only Telegram and we know it.
- *  - We also require an X-Telegram-Bot-Api-Secret-Token header matching
- *    env.TELEGRAM_WEBHOOK_SECRET, which Telegram echoes if configured.
  */
 telegramRouter.post('/webhook/telegram/:botToken', async (req: Request, res: Response) => {
   const botTokenRaw = req.params.botToken;
@@ -27,8 +24,6 @@ telegramRouter.post('/webhook/telegram/:botToken', async (req: Request, res: Res
     return;
   }
 
-  // Verify the optional secret header. When registering the webhook with
-  // Telegram, pass secret_token = env.TELEGRAM_WEBHOOK_SECRET.
   const rawSecret = req.get('x-telegram-bot-api-secret-token');
   const secret = Array.isArray(rawSecret) ? rawSecret[0] : rawSecret;
   if (secret !== env.TELEGRAM_WEBHOOK_SECRET) {
@@ -45,6 +40,18 @@ telegramRouter.post('/webhook/telegram/:botToken', async (req: Request, res: Res
   }
 
   const bot = getBotForMerchant(merchant);
-  const handler = webhookCallback(bot, 'express');
-  return handler(req, res);
+  const handler = webhookCallback(bot, 'express', {
+    timeoutMilliseconds: 10_000,
+    onTimeout: 'return',
+  });
+  try {
+    return await handler(req, res);
+  } catch (err) {
+    // Never let errors in bot handlers bubble up — we already replied 200 to
+    // Telegram (or we will), and crashing the Node process for a stale
+    // callback query would trigger a reboot cascade.
+    logger.error({ err, merchantId: merchant.id }, 'webhook handler error');
+    if (!res.headersSent) res.sendStatus(200);
+    return;
+  }
 });
