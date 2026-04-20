@@ -72,6 +72,14 @@ export class RamperClient {
 
   /**
    * Build the Smart Hosted checkout URL the buyer should visit.
+   *
+   * Note on URL encoding: Ramper's wallet/affiliate API returns `address_in`
+   * as a base64-ish string containing reserved URL characters (+, /, =).
+   * Depending on how the upstream API serialised it, it may already be
+   * percent-encoded. We decode it once so that URLSearchParams.set — which
+   * re-encodes — produces a correctly singly-encoded URL, not doubly-encoded.
+   * A decodeURIComponent on a plain (not already encoded) string is a
+   * no-op, so this is safe either way.
    */
   buildCheckoutUrl(params: {
     addressIn: string;
@@ -80,7 +88,7 @@ export class RamperClient {
     email: string;
   }): string {
     const url = new URL(RAMPER_CHECKOUT);
-    url.searchParams.set('address', params.addressIn);
+    url.searchParams.set('address', safeDecode(params.addressIn));
     url.searchParams.set('amount', params.amount.toFixed(2));
     url.searchParams.set('currency', params.currency);
     url.searchParams.set('email', params.email);
@@ -108,3 +116,16 @@ export class RamperClient {
 }
 
 export const ramperClient = new RamperClient();
+
+/**
+ * Percent-decode a string safely. If it's not encoded (or contains a stray
+ * '%' not followed by two hex chars), return it unchanged rather than
+ * throwing — which is what `decodeURIComponent` would do.
+ */
+function safeDecode(s: string): string {
+  try {
+    return decodeURIComponent(s);
+  } catch {
+    return s;
+  }
+}
