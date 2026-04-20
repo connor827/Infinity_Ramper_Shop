@@ -74,3 +74,14 @@ async function shutdown(signal: string) {
 
 process.on('SIGTERM', () => shutdown('SIGTERM'));
 process.on('SIGINT', () => shutdown('SIGINT'));
+
+// Never crash on a stray rejection — log it and keep running. A crashed
+// Node process + Railway restart takes ~30s, during which Telegram webhooks
+// fail and callback queries expire, which throws more errors, which would
+// crash again. Prefer to log and recover.
+process.on('unhandledRejection', (reason) => {
+  logger.error({ err: reason }, 'unhandled promise rejection (continuing)');
+});
+process.on('uncaughtException', (err) => {
+  logger.error({ err }, 'uncaught exception (continuing)');
+});
