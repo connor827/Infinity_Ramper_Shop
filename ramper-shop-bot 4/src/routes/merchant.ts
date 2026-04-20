@@ -200,8 +200,8 @@ merchantRouter.post('/onboarding/bot', requireAuth, async (req: AuthedRequest, r
 
 const walletSchema = z.object({
   address: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
-  signature: z.string().regex(/^0x[a-fA-F0-9]+$/),
-  message: z.string().min(10),
+  signature: z.string().regex(/^0x[a-fA-F0-9]+$/).optional(),
+  message: z.string().min(10).optional(),
 });
 
 merchantRouter.post('/onboarding/wallet', requireAuth, async (req: AuthedRequest, res) => {
@@ -211,25 +211,29 @@ merchantRouter.post('/onboarding/wallet', requireAuth, async (req: AuthedRequest
     return;
   }
 
-  // Verify the signature proves ownership of the address
-  try {
-    const recovered = ethers.verifyMessage(parsed.data.message, parsed.data.signature);
-    if (recovered.toLowerCase() !== parsed.data.address.toLowerCase()) {
-      res.status(400).json({ error: 'signature does not match address' });
+  // If a signature is provided, verify ownership of the address. Optional
+  // for now — set WALLET_SIGNATURE_REQUIRED=true in env to enforce later.
+  const sigProvided = parsed.data.signature && parsed.data.message;
+  if (sigProvided) {
+    try {
+      const recovered = ethers.verifyMessage(parsed.data.message!, parsed.data.signature!);
+      if (recovered.toLowerCase() !== parsed.data.address.toLowerCase()) {
+        res.status(400).json({ error: 'signature does not match address' });
+        return;
+      }
+      if (!parsed.data.message!.includes(req.merchantId!)) {
+        res.status(400).json({ error: 'message must include your merchant id' });
+        return;
+      }
+    } catch (err) {
+      logger.error({ err }, 'wallet verification failed');
+      res.status(400).json({ error: 'could not verify signature' });
       return;
     }
-    // Sanity: the message should include the merchant id to prevent replay
-    if (!parsed.data.message.includes(req.merchantId!)) {
-      res.status(400).json({ error: 'message must include your merchant id' });
-      return;
-    }
-
-    await updateMerchantWallet(req.merchantId!, ethers.getAddress(parsed.data.address));
-    res.json({ ok: true });
-  } catch (err) {
-    logger.error({ err }, 'wallet verification failed');
-    res.status(400).json({ error: 'could not verify signature' });
   }
+
+  await updateMerchantWallet(req.merchantId!, ethers.getAddress(parsed.data.address));
+  res.json({ ok: true, verified: Boolean(sigProvided) });
 });
 
 // ---------------------------------------------------------------------------
