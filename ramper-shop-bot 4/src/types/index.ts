@@ -68,6 +68,16 @@ export interface Order {
   txid_in: string | null;
   txid_out: string | null;
   paid_at: Date | null;
+  // Fulfilment tracking (migration 003)
+  tracking_number: string | null;
+  tracking_carrier: string | null;
+  tracking_url: string | null;
+  merchant_notes: string | null;
+  shipped_at: Date | null;
+  delivered_at: Date | null;
+  cancelled_at: Date | null;
+  refunded_at: Date | null;
+  refund_amount: string | null;
   created_at: Date;
   updated_at: Date;
 }

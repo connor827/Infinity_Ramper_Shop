@@ -40,6 +40,18 @@ const publicCandidates = [
 ];
 const publicDir = publicCandidates.find(existsSync) ?? publicCandidates[0];
 logger.info({ publicDir }, 'serving dashboard from');
+
+// Clean URLs for dashboard pages: /dashboard/orders -> dashboard/orders.html
+const DASHBOARD_PAGES = ['orders', 'products', 'customers', 'bot', 'settings'];
+app.get('/dashboard', (_req, res) => {
+  res.sendFile(path.join(publicDir, 'dashboard', 'index.html'));
+});
+for (const p of DASHBOARD_PAGES) {
+  app.get(`/dashboard/${p}`, (_req, res) => {
+    res.sendFile(path.join(publicDir, 'dashboard', `${p}.html`));
+  });
+}
+
 app.use(express.static(publicDir));
 
 // --- Generic error handler --------------------------------------------------

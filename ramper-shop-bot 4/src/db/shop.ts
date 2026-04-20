@@ -312,6 +312,306 @@ export async function getRecentOrdersForMerchant(
   return rows;
 }
 
+// ------------------------------------------------------------------
+// Orders management (dashboard)
+// ------------------------------------------------------------------
+
+export interface OrderFilters {
+  status?: string;
+  since?: Date;
+  until?: Date;
+  search?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export interface OrderListItem extends Order {
+  item_count: number;
+  buyer_telegram_username: string | null;
+  buyer_telegram_first_name: string | null;
+}
+
+export async function listOrdersForMerchant(
+  merchantId: string,
+  filters: OrderFilters = {}
+): Promise<OrderListItem[]> {
+  const where: string[] = ['o.merchant_id = $1'];
+  const params: unknown[] = [merchantId];
+  let i = 2;
+
+  if (filters.status) {
+    where.push(`o.status = $${i++}`);
+    params.push(filters.status);
+  }
+  if (filters.since) {
+    where.push(`o.created_at >= $${i++}`);
+    params.push(filters.since);
+  }
+  if (filters.until) {
+    where.push(`o.created_at <= $${i++}`);
+    params.push(filters.until);
+  }
+  if (filters.search) {
+    where.push(
+      `(b.first_name ILIKE $${i} OR b.username ILIKE $${i} OR CAST(o.order_number AS TEXT) = $${i})`
+    );
+    params.push(`%${filters.search}%`);
+    i++;
+  }
+
+  const limit = Math.min(filters.limit ?? 50, 200);
+  const offset = filters.offset ?? 0;
+
+  const { rows } = await query<OrderListItem>(
+    `SELECT o.*,
+            COALESCE(item_counts.count, 0)::int AS item_count,
+            b.username AS buyer_telegram_username,
+            b.first_name AS buyer_telegram_first_name
+       FROM orders o
+       JOIN buyers b ON b.id = o.buyer_id
+       LEFT JOIN (
+         SELECT order_id, COUNT(*) AS count
+           FROM order_items GROUP BY order_id
+       ) item_counts ON item_counts.order_id = o.id
+      WHERE ${where.join(' AND ')}
+      ORDER BY o.created_at DESC
+      LIMIT ${limit} OFFSET ${offset}`,
+    params
+  );
+  return rows;
+}
+
+export async function countOrdersForMerchant(
+  merchantId: string,
+  filters: Omit<OrderFilters, 'limit' | 'offset'> = {}
+): Promise<number> {
+  const where: string[] = ['o.merchant_id = $1'];
+  const params: unknown[] = [merchantId];
+  let i = 2;
+
+  if (filters.status) {
+    where.push(`o.status = $${i++}`);
+    params.push(filters.status);
+  }
+  if (filters.since) {
+    where.push(`o.created_at >= $${i++}`);
+    params.push(filters.since);
+  }
+  if (filters.until) {
+    where.push(`o.created_at <= $${i++}`);
+    params.push(filters.until);
+  }
+  if (filters.search) {
+    where.push(
+      `(b.first_name ILIKE $${i} OR b.username ILIKE $${i} OR CAST(o.order_number AS TEXT) = $${i})`
+    );
+    params.push(`%${filters.search}%`);
+    i++;
+  }
+
+  const { rows } = await query<{ count: string }>(
+    `SELECT COUNT(*)::text AS count
+       FROM orders o JOIN buyers b ON b.id = o.buyer_id
+      WHERE ${where.join(' AND ')}`,
+    params
+  );
+  return Number(rows[0]?.count ?? 0);
+}
+
+export interface OrderDetail extends Order {
+  buyer_telegram_id: number | null;
+  buyer_telegram_username: string | null;
+  buyer_telegram_first_name: string | null;
+  items: Array<{
+    id: string;
+    product_id: string;
+    product_name: string;
+    quantity: number;
+    unit_price: string;
+    line_total: string;
+  }>;
+}
+
+export async function getOrderDetail(
+  merchantId: string,
+  orderId: string
+): Promise<OrderDetail | null> {
+  const { rows } = await query<OrderDetail>(
+    `SELECT o.*,
+            b.telegram_id AS buyer_telegram_id,
+            b.username AS buyer_telegram_username,
+            b.first_name AS buyer_telegram_first_name
+       FROM orders o
+       JOIN buyers b ON b.id = o.buyer_id
+      WHERE o.merchant_id = $1 AND o.id = $2
+      LIMIT 1`,
+    [merchantId, orderId]
+  );
+  if (rows.length === 0) return null;
+  const order = rows[0];
+
+  const { rows: items } = await query<{
+    id: string;
+    product_id: string;
+    product_name: string;
+    quantity: number;
+    unit_price: string;
+    line_total: string;
+  }>(
+    `SELECT id, product_id, product_name, quantity,
+            unit_price::text, line_total::text
+       FROM order_items WHERE order_id = $1`,
+    [orderId]
+  );
+  order.items = items;
+  return order;
+}
+
+export async function updateOrderStatus(
+  merchantId: string,
+  orderId: string,
+  status: string,
+  extras: {
+    tracking_number?: string;
+    tracking_carrier?: string;
+    tracking_url?: string;
+    merchant_notes?: string;
+    refund_amount?: number;
+  } = {}
+): Promise<void> {
+  const sets: string[] = ['status = $1', 'updated_at = NOW()'];
+  const params: unknown[] = [status];
+  let i = 2;
+
+  // Status-specific timestamps
+  if (status === 'shipped') sets.push(`shipped_at = COALESCE(shipped_at, NOW())`);
+  if (status === 'delivered') sets.push(`delivered_at = COALESCE(delivered_at, NOW())`);
+  if (status === 'cancelled') sets.push(`cancelled_at = COALESCE(cancelled_at, NOW())`);
+  if (status === 'refunded') sets.push(`refunded_at = COALESCE(refunded_at, NOW())`);
+
+  if (extras.tracking_number !== undefined) {
+    sets.push(`tracking_number = $${i++}`);
+    params.push(extras.tracking_number || null);
+  }
+  if (extras.tracking_carrier !== undefined) {
+    sets.push(`tracking_carrier = $${i++}`);
+    params.push(extras.tracking_carrier || null);
+  }
+  if (extras.tracking_url !== undefined) {
+    sets.push(`tracking_url = $${i++}`);
+    params.push(extras.tracking_url || null);
+  }
+  if (extras.merchant_notes !== undefined) {
+    sets.push(`merchant_notes = $${i++}`);
+    params.push(extras.merchant_notes || null);
+  }
+  if (extras.refund_amount !== undefined) {
+    sets.push(`refund_amount = $${i++}`);
+    params.push(extras.refund_amount);
+  }
+
+  params.push(merchantId, orderId);
+  await query(
+    `UPDATE orders SET ${sets.join(', ')}
+      WHERE merchant_id = $${i++} AND id = $${i}`,
+    params
+  );
+}
+
+// ------------------------------------------------------------------
+// Metrics (for dashboard overview)
+// ------------------------------------------------------------------
+
+export interface MerchantMetrics {
+  revenue_today: string;
+  revenue_week: string;
+  revenue_month: string;
+  orders_today: number;
+  orders_week: number;
+  orders_month: number;
+  orders_awaiting_fulfilment: number;
+  total_buyers: number;
+  low_stock_products: number;
+  // Last 30 days, one point per day — for chart
+  revenue_series: Array<{ date: string; revenue: string; orders: number }>;
+}
+
+export async function getMerchantMetrics(merchantId: string): Promise<MerchantMetrics> {
+  const { rows: agg } = await query<{
+    revenue_today: string;
+    revenue_week: string;
+    revenue_month: string;
+    orders_today: string;
+    orders_week: string;
+    orders_month: string;
+    orders_awaiting_fulfilment: string;
+  }>(
+    `SELECT
+       COALESCE(SUM(CASE WHEN paid_at >= date_trunc('day', NOW()) THEN total END), 0)::text AS revenue_today,
+       COALESCE(SUM(CASE WHEN paid_at >= NOW() - interval '7 days' THEN total END), 0)::text AS revenue_week,
+       COALESCE(SUM(CASE WHEN paid_at >= NOW() - interval '30 days' THEN total END), 0)::text AS revenue_month,
+       COUNT(CASE WHEN paid_at >= date_trunc('day', NOW()) THEN 1 END)::text AS orders_today,
+       COUNT(CASE WHEN paid_at >= NOW() - interval '7 days' THEN 1 END)::text AS orders_week,
+       COUNT(CASE WHEN paid_at >= NOW() - interval '30 days' THEN 1 END)::text AS orders_month,
+       COUNT(CASE WHEN status IN ('paid', 'processing') THEN 1 END)::text AS orders_awaiting_fulfilment
+       FROM orders WHERE merchant_id = $1`,
+    [merchantId]
+  );
+
+  const { rows: buyerCountRows } = await query<{ count: string }>(
+    `SELECT COUNT(DISTINCT b.id)::text AS count
+       FROM buyers b WHERE b.merchant_id = $1`,
+    [merchantId]
+  );
+
+  const { rows: lowStockRows } = await query<{ count: string }>(
+    `SELECT COUNT(*)::text AS count
+       FROM products WHERE merchant_id = $1 AND status = 'active' AND stock <= 5`,
+    [merchantId]
+  );
+
+  const { rows: series } = await query<{
+    date: string;
+    revenue: string;
+    orders: string;
+  }>(
+    `WITH days AS (
+       SELECT generate_series(
+         (NOW() - interval '29 days')::date,
+         NOW()::date,
+         '1 day'
+       )::date AS d
+     )
+     SELECT to_char(days.d, 'YYYY-MM-DD') AS date,
+            COALESCE(SUM(o.total), 0)::text AS revenue,
+            COUNT(o.id)::text AS orders
+       FROM days
+       LEFT JOIN orders o
+         ON o.merchant_id = $1
+        AND o.paid_at::date = days.d
+      GROUP BY days.d ORDER BY days.d`,
+    [merchantId]
+  );
+
+  const a = agg[0]!;
+  return {
+    revenue_today: a.revenue_today,
+    revenue_week: a.revenue_week,
+    revenue_month: a.revenue_month,
+    orders_today: Number(a.orders_today),
+    orders_week: Number(a.orders_week),
+    orders_month: Number(a.orders_month),
+    orders_awaiting_fulfilment: Number(a.orders_awaiting_fulfilment),
+    total_buyers: Number(buyerCountRows[0]?.count ?? 0),
+    low_stock_products: Number(lowStockRows[0]?.count ?? 0),
+    revenue_series: series.map((r) => ({
+      date: r.date,
+      revenue: r.revenue,
+      orders: Number(r.orders),
+    })),
+  };
+}
+
 export async function recordRamperCallback(
   orderId: string | null,
   data: { value_coin: number | null; coin: string | null; txid_in: string; txid_out: string },

@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Customers — Infinity Ramper Shops</title>
+<link rel="stylesheet" href="/assets/branding.css">
+</head>
+<body>
+<div id="page"></div>
+<script src="/assets/shell.js"></script>
+<script>
+if (Auth.require()) {
+  const main = Shell.render({
+    crumbs: [{ label: 'Dashboard', href: '/dashboard' }, { label: 'Customers' }],
+  });
+  main.innerHTML = `
+    <div class="page-head">
+      <div>
+        <span class="eyebrow">Admin</span>
+        <h1 class="display mt-2">Customers</h1>
+        <div class="meta">Coming next.</div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="empty">
+        <div class="display">Customers — coming next.</div>
+        <em>This area is in the plan. Reach out once you want it prioritised.</em>
+      </div>
+    </div>
+  `;
+}
+</script>
+</body>
+</html>

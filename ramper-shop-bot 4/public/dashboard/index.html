@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Overview — Infinity Ramper Shops</title>
+<link rel="stylesheet" href="/assets/branding.css">
+</head>
+<body>
+<div id="page"></div>
+<script src="/assets/shell.js"></script>
+<script>
+(async () => {
+  'use strict';
+  if (!Auth.require()) return;
+
+  const main = Shell.render({
+    crumbs: [{ label: 'Overview' }],
+  });
+
+  main.innerHTML = `
+    <div class="page-head">
+      <div>
+        <span class="eyebrow">Last 30 days</span>
+        <h1 class="display mt-2">Overview</h1>
+        <div class="meta">A live read of your store's performance.</div>
+      </div>
+      <div class="actions">
+        <a class="btn btn-secondary btn-sm" href="/dashboard/orders">View all orders →</a>
+      </div>
+    </div>
+
+    <div id="metrics-wrap" class="mb-4">
+      <div class="empty">Loading metrics…</div>
+    </div>
+
+    <div class="card mb-4">
+      <div class="card-head">
+        <div>
+          <span class="eyebrow plain">Revenue · 30d</span>
+          <h2 class="display mt-1" id="chart-title">—</h2>
+        </div>
+        <div class="faint" id="chart-subtitle" style="font-size:12px;"></div>
+      </div>
+      <div id="chart-root" class="card-body">
+        <div class="empty">Loading chart…</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <div>
+          <span class="eyebrow plain">Recent activity</span>
+          <h2 class="display mt-1">Orders</h2>
+        </div>
+        <a class="btn btn-ghost" href="/dashboard/orders">All orders →</a>
+      </div>
+      <div id="recent-orders"><div class="empty">Loading…</div></div>
+    </div>
+  `;
+
+  // --- Load data in parallel -------------------------------------------
+  let metrics, ordersResp, me;
+  try {
+    [metrics, ordersResp, me] = await Promise.all([
+      API('GET', '/metrics'),
+      API('GET', '/orders?limit=5'),
+      API('GET', '/me'),
+    ]);
+  } catch (err) {
+    Toast.err(err.message);
+    return;
+  }
+
+  const currency = me?.currency_code || 'USD';
+
+  // --- Metrics tiles ---------------------------------------------------
+  const tiles = [
+    { label: 'Revenue today',  money: metrics.revenue_today,  sub: `${metrics.orders_today} ${metrics.orders_today === 1 ? 'order' : 'orders'}` },
+    { label: 'Revenue · 7d',   money: metrics.revenue_week,   sub: `${metrics.orders_week} ${metrics.orders_week === 1 ? 'order' : 'orders'}` },
+    { label: 'Revenue · 30d',  money: metrics.revenue_month,  sub: `${metrics.orders_month} ${metrics.orders_month === 1 ? 'order' : 'orders'}` },
+    { label: 'Awaiting fulfil.', value: String(metrics.orders_awaiting_fulfilment), sub: metrics.orders_awaiting_fulfilment === 0 ? 'all caught up' : 'needs attention' },
+    { label: 'Total customers', value: String(metrics.total_buyers), sub: 'across all orders' },
+    { label: 'Low stock',       value: String(metrics.low_stock_products), sub: metrics.low_stock_products === 0 ? 'good' : 'items ≤ 5' },
+  ];
+
+  document.getElementById('metrics-wrap').innerHTML =
+    `<div class="grid-hairline" style="grid-template-columns: repeat(3, 1fr);">
+       ${tiles.map(renderMetric).join('')}
+     </div>`;
+
+  function renderMetric(t) {
+    const valueHtml = t.money !== undefined
+      ? (() => {
+          const { ccy, val } = Fmt.moneySplit(t.money, currency);
+          return `<span class="ccy">${ccy}</span>${val}`;
+        })()
+      : Fmt.escape(t.value);
+    return `<div class="metric">
+      <div class="label">${Fmt.escape(t.label)}</div>
+      <div class="value">${valueHtml}</div>
+      <div class="delta">${Fmt.escape(t.sub)}</div>
+    </div>`;
+  }
+
+  // --- Chart -----------------------------------------------------------
+  const series = metrics.revenue_series || [];
+  const total30d = series.reduce((s, p) => s + Number(p.revenue), 0);
+  document.getElementById('chart-title').innerHTML =
+    `<span style="font-size:14px;color:var(--ink-light);letter-spacing:0.02em;margin-right:6px">${currency}</span>${total30d.toFixed(2)}`;
+
+  const countedDays = series.filter(p => Number(p.revenue) > 0).length;
+  document.getElementById('chart-subtitle').textContent =
+    `${countedDays} ${countedDays === 1 ? 'day' : 'days'} with activity`;
+
+  renderChart(document.getElementById('chart-root'), series);
+
+  function renderChart(root, pts) {
+    if (pts.length === 0) {
+      root.innerHTML = `<div class="empty">No revenue data yet. <em>Once you take your first order, it'll appear here.</em></div>`;
+      return;
+    }
+    const W = 1000;
+    const H = 180;
+    const padding = { top: 12, right: 12, bottom: 24, left: 44 };
+    const plotW = W - padding.left - padding.right;
+    const plotH = H - padding.top - padding.bottom;
+
+    const values = pts.map(p => Number(p.revenue));
+    const maxV = Math.max(1, ...values);
+    const niceMax = niceCeil(maxV);
+
+    const xStep = plotW / Math.max(1, pts.length - 1);
+    const coords = pts.map((p, i) => ({
+      x: padding.left + i * xStep,
+      y: padding.top + (1 - Number(p.revenue) / niceMax) * plotH,
+      v: Number(p.revenue),
+      d: p.date,
+    }));
+
+    const linePath = coords.map((c, i) => (i === 0 ? 'M' : 'L') + c.x.toFixed(1) + ',' + c.y.toFixed(1)).join(' ');
+    const areaPath = linePath + ` L${coords[coords.length - 1].x.toFixed(1)},${padding.top + plotH} L${coords[0].x.toFixed(1)},${padding.top + plotH} Z`;
+
+    const gridLines = [0, 0.5, 1].map(f => {
+      const y = padding.top + f * plotH;
+      const v = niceMax * (1 - f);
+      return `<line class="grid-line" x1="${padding.left}" y1="${y}" x2="${W - padding.right}" y2="${y}"/>
+              <text class="axis-label" x="${padding.left - 8}" y="${y + 3}" text-anchor="end">${formatAxis(v)}</text>`;
+    }).join('');
+
+    const xLabels = [0, Math.floor(pts.length / 2), pts.length - 1].map(i => {
+      const c = coords[i];
+      return `<text class="axis-label" x="${c.x}" y="${H - 6}" text-anchor="middle">${shortDate(pts[i].date)}</text>`;
+    }).join('');
+
+    const dots = coords.map(c => `<circle class="dot" cx="${c.x}" cy="${c.y}" r="2.5"/>`).join('');
+
+    root.innerHTML = `
+      <svg class="chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+        ${gridLines}
+        <path class="area" d="${areaPath}"/>
+        <path class="line" d="${linePath}"/>
+        ${dots}
+        ${xLabels}
+      </svg>`;
+  }
+
+  function niceCeil(v) {
+    if (v === 0) return 1;
+    const mag = Math.pow(10, Math.floor(Math.log10(v)));
+    const top = v / mag;
+    const nice = top <= 1 ? 1 : top <= 2 ? 2 : top <= 5 ? 5 : 10;
+    return nice * mag;
+  }
+  function formatAxis(v) {
+    if (v >= 1000) return (v / 1000).toFixed(v >= 10000 ? 0 : 1) + 'k';
+    return v.toFixed(v < 10 ? 1 : 0);
+  }
+  function shortDate(s) {
+    const d = new Date(s + 'T00:00:00Z');
+    return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+  }
+
+  // --- Recent orders ---------------------------------------------------
+  const orders = ordersResp.orders || [];
+  if (orders.length === 0) {
+    document.getElementById('recent-orders').innerHTML = `
+      <div class="empty">
+        <div class="display">No orders yet.</div>
+        <em>When a buyer completes checkout through your bot, their order will appear here.</em>
+      </div>`;
+  } else {
+    document.getElementById('recent-orders').innerHTML = `
+      <div class="table-wrap">
+        <table class="table">
+          <thead><tr>
+            <th>Order</th><th>Buyer</th><th>Status</th><th class="text-right">Total</th><th class="text-right">When</th>
+          </tr></thead>
+          <tbody>
+            ${orders.map(renderOrderRow).join('')}
+          </tbody>
+        </table>
+      </div>`;
+
+    main.querySelectorAll('tr[data-id]').forEach(tr => {
+      tr.addEventListener('click', () => {
+        window.location.href = `/dashboard/orders?open=${encodeURIComponent(tr.dataset.id)}`;
+      });
+    });
+  }
+
+  function renderOrderRow(o) {
+    const buyer = o.buyer_telegram_username
+      ? '@' + o.buyer_telegram_username
+      : o.buyer_telegram_first_name || '—';
+    return `<tr data-id="${Fmt.escape(o.id)}">
+      <td class="mono">#${o.order_number}</td>
+      <td>${Fmt.escape(buyer)}</td>
+      <td><span class="badge badge-${o.status.replace('_', '')}">${o.status.replace('_', ' ')}</span></td>
+      <td class="text-right num">${Fmt.money(o.total, o.currency_code)}</td>
+      <td class="text-right muted">${Fmt.relative(o.created_at)}</td>
+    </tr>`;
+  }
+})();
+</script>
+</body>
+</html>

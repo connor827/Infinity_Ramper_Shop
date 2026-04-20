@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Products — Infinity Ramper Shops</title>
+<link rel="stylesheet" href="/assets/branding.css">
+</head>
+<body>
+<div id="page"></div>
+<script src="/assets/shell.js"></script>
+<script>
+if (Auth.require()) {
+  const main = Shell.render({
+    crumbs: [{ label: 'Dashboard', href: '/dashboard' }, { label: 'Products' }],
+  });
+  main.innerHTML = `
+    <div class="page-head">
+      <div>
+        <span class="eyebrow">Catalogue</span>
+        <h1 class="display mt-2">Products</h1>
+        <div class="meta">Manage what your bot sells.</div>
+      </div>
+      <div class="actions">
+        <a class="btn btn-secondary btn-sm" href="/">← Back to onboarding (add products here for now)</a>
+      </div>
+    </div>
+    <div class="card">
+      <div class="empty">
+        <div class="display">Products, coming next.</div>
+        <em>
+          Edit, archive, variants, image uploads, bulk CSV import.<br>
+          For now, use the onboarding page to add products.
+        </em>
+      </div>
+    </div>
+  `;
+}
+</script>
+</body>
+</html>

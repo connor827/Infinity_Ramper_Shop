@@ -13,6 +13,11 @@ import {
   createProduct,
   listActiveProducts,
   getRecentOrdersForMerchant,
+  listOrdersForMerchant,
+  countOrdersForMerchant,
+  getOrderDetail,
+  updateOrderStatus,
+  getMerchantMetrics,
 } from '../db/shop.js';
 import { hashPassword, verifyPassword, signToken, verifyToken } from '../middleware/auth.js';
 import { env } from '../config/env.js';
@@ -333,8 +338,120 @@ merchantRouter.post('/products', requireAuth, async (req: AuthedRequest, res) =>
 // ---------------------------------------------------------------------------
 
 merchantRouter.get('/orders', requireAuth, async (req: AuthedRequest, res) => {
-  const orders = await getRecentOrdersForMerchant(req.merchantId!);
-  res.json(orders);
+  const q = req.query;
+  const asStr = (v: unknown): string | undefined =>
+    typeof v === 'string' ? v : undefined;
+
+  const status = asStr(q.status);
+  const search = asStr(q.search);
+  const sinceStr = asStr(q.since);
+  const untilStr = asStr(q.until);
+  const since = sinceStr ? new Date(sinceStr) : undefined;
+  const until = untilStr ? new Date(untilStr) : undefined;
+  const limit = asStr(q.limit) ? Number(asStr(q.limit)) : 50;
+  const offset = asStr(q.offset) ? Number(asStr(q.offset)) : 0;
+
+  const [orders, total] = await Promise.all([
+    listOrdersForMerchant(req.merchantId!, { status, search, since, until, limit, offset }),
+    countOrdersForMerchant(req.merchantId!, { status, search, since, until }),
+  ]);
+  res.json({ orders, total });
+});
+
+merchantRouter.get('/orders/export.csv', requireAuth, async (req: AuthedRequest, res) => {
+  const asStr = (v: unknown): string | undefined =>
+    typeof v === 'string' ? v : undefined;
+  const status = asStr(req.query.status);
+  const sinceStr = asStr(req.query.since);
+  const untilStr = asStr(req.query.until);
+  const since = sinceStr ? new Date(sinceStr) : undefined;
+  const until = untilStr ? new Date(untilStr) : undefined;
+
+  const orders = await listOrdersForMerchant(req.merchantId!, {
+    status, since, until, limit: 10_000,
+  });
+
+  const header = [
+    'order_number', 'created_at', 'status', 'buyer', 'currency',
+    'subtotal', 'shipping', 'total', 'paid_at', 'shipped_at',
+    'tracking_carrier', 'tracking_number',
+  ];
+  const escape = (v: unknown) => {
+    if (v === null || v === undefined) return '';
+    const s = String(v);
+    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const lines = [header.join(',')];
+  for (const o of orders) {
+    const buyer = o.buyer_telegram_username
+      ? `@${o.buyer_telegram_username}`
+      : o.buyer_telegram_first_name ?? '';
+    lines.push(
+      [
+        o.order_number, o.created_at, o.status, buyer, o.currency_code,
+        o.subtotal, o.shipping, o.total, o.paid_at ?? '', o.shipped_at ?? '',
+        o.tracking_carrier ?? '', o.tracking_number ?? '',
+      ].map(escape).join(',')
+    );
+  }
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="orders.csv"`);
+  res.send(lines.join('\n'));
+});
+
+merchantRouter.get('/orders/:id', requireAuth, async (req: AuthedRequest, res) => {
+  const id = String(req.params.id);
+  const order = await getOrderDetail(req.merchantId!, id);
+  if (!order) {
+    res.status(404).json({ error: 'order not found' });
+    return;
+  }
+  res.json(order);
+});
+
+const orderUpdateSchema = z.object({
+  status: z.enum([
+    'awaiting_payment', 'paid', 'processing',
+    'shipped', 'delivered', 'cancelled', 'refunded',
+  ]).optional(),
+  tracking_number: z.string().max(100).optional(),
+  tracking_carrier: z.string().max(50).optional(),
+  tracking_url: z.string().url().max(500).optional().or(z.literal('')),
+  merchant_notes: z.string().max(2000).optional(),
+  refund_amount: z.number().nonnegative().optional(),
+});
+
+merchantRouter.patch('/orders/:id', requireAuth, async (req: AuthedRequest, res) => {
+  const id = String(req.params.id);
+  const parsed = orderUpdateSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.flatten() });
+    return;
+  }
+  const existing = await getOrderDetail(req.merchantId!, id);
+  if (!existing) {
+    res.status(404).json({ error: 'order not found' });
+    return;
+  }
+  await updateOrderStatus(
+    req.merchantId!,
+    id,
+    parsed.data.status ?? existing.status,
+    {
+      tracking_number: parsed.data.tracking_number,
+      tracking_carrier: parsed.data.tracking_carrier,
+      tracking_url: parsed.data.tracking_url === '' ? undefined : parsed.data.tracking_url,
+      merchant_notes: parsed.data.merchant_notes,
+      refund_amount: parsed.data.refund_amount,
+    }
+  );
+  const updated = await getOrderDetail(req.merchantId!, id);
+  res.json(updated);
+});
+
+merchantRouter.get('/metrics', requireAuth, async (req: AuthedRequest, res) => {
+  const metrics = await getMerchantMetrics(req.merchantId!);
+  res.json(metrics);
 });
 
 // ---------------------------------------------------------------------------
