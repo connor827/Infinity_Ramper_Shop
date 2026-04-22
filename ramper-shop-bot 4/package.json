@@ -14,26 +14,25 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "grammy": "^1.30.0",
     "@grammyjs/conversations": "^1.2.0",
-    "express": "^4.21.0",
-    "pg": "^8.13.0",
+    "@types/bcryptjs": "^2.4.6",
+    "@types/express": "^5.0.0",
+    "@types/jsonwebtoken": "^9.0.7",
+    "@types/node": "^22.7.0",
+    "@types/pg": "^8.11.10",
+    "bcryptjs": "^2.4.3",
     "dotenv": "^16.4.5",
     "ethers": "^6.13.0",
-    "zod": "^3.23.8",
-    "bcryptjs": "^2.4.3",
+    "express": "^4.21.0",
+    "grammy": "^1.30.0",
     "jsonwebtoken": "^9.0.2",
+    "pg": "^8.13.0",
     "pino": "^9.5.0",
     "pino-pretty": "^11.3.0",
-    "typescript": "^5.6.0",
     "tsx": "^4.19.0",
-    "@types/node": "^22.7.0",
-    "@types/express": "^5.0.0",
-    "@types/pg": "^8.11.10",
-    "@types/bcryptjs": "^2.4.6",
-    "@types/jsonwebtoken": "^9.0.7"
+    "typescript": "^5.6.0",
+    "zod": "^3.23.8"
   },
-  "devDependencies": {},
   "engines": {
     "node": ">=20"
   }
