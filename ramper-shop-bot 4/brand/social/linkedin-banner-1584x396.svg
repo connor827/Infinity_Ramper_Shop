@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1584" height="396" viewBox="0 0 1584 396" role="img" aria-label="Infinity Ramper — Your customers pay by card. You receive USDC.">
+  <title>Infinity Ramper — LinkedIn banner</title>
+  <desc>LinkedIn personal banner 1584x396. Copy: "Your customers pay by card. You receive USDC." with "You receive USDC" in amber italic. Content fits within the centre 1000px to survive LinkedIn's mobile crop.</desc>
+
+  <rect width="1584" height="396" fill="#f0ede6"/>
+
+  <line x1="292" y1="80" x2="320" y2="80" stroke="#bbbbbb" stroke-width="1.5"/>
+  <text x="336" y="85" font-family="'Funnel Display','Helvetica Neue',Arial,sans-serif" font-weight="500" font-size="15" letter-spacing="1.8" fill="#bbbbbb">INFINITY RAMPER · WEB3 PAYMENT INFRASTRUCTURE</text>
+
+  <text x="292" y="200" font-family="'Funnel Display',serif" font-size="72" font-weight="500" letter-spacing="-2.9" fill="#0a0a0a">Your customers pay by card.</text>
+  <text x="292" y="280" font-family="'Funnel Display',serif" font-size="72" font-weight="300" font-style="italic" letter-spacing="-2.2" fill="#FFAC1C">You receive USDC.</text>
+
+  <text x="292" y="340" font-family="'IBM Plex Mono',monospace" font-size="14" fill="#555555">infinityramper.com · ~10s · Polygon · non-custodial</text>
+</svg>

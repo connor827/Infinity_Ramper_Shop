@@ -5,37 +5,546 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Products — Infinity Ramper Shops</title>
 <link rel="stylesheet" href="/assets/branding.css">
+<style>
+  .product-thumb {
+    width: 44px;
+    height: 44px;
+    border-radius: 4px;
+    background: var(--bg-warm);
+    border: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+  .product-thumb img { width: 100%; height: 100%; object-fit: cover; }
+  .product-thumb-placeholder {
+    width: 18px;
+    height: 18px;
+    border: 1px dashed var(--ink-faint);
+    border-radius: 2px;
+  }
+  .products-row { cursor: pointer; transition: background 120ms ease; }
+  .products-row:hover { background: var(--bg-warm); }
+  .product-preview {
+    width: 180px;
+    height: 180px;
+    border-radius: 6px;
+    background: var(--bg-warm);
+    border: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    margin-bottom: 20px;
+  }
+  .product-preview img { width: 100%; height: 100%; object-fit: cover; }
+  .product-preview .ph {
+    color: var(--ink-faint);
+    font-size: 11px;
+    font-family: 'IBM Plex Mono', monospace;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+  .form-row { display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px; }
+  .form-row label {
+    font-family: 'Funnel Display', sans-serif;
+    font-weight: 500;
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+  }
+  .form-row input,
+  .form-row textarea,
+  .form-row select {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--ink);
+    font-family: 'Inter', sans-serif;
+    font-size: 14px;
+    padding: 10px 12px;
+    border-radius: 6px;
+    outline: none;
+    transition: border-color 120ms ease;
+    width: 100%;
+  }
+  .form-row input:focus,
+  .form-row textarea:focus,
+  .form-row select:focus { border-color: var(--accent); }
+  .form-row textarea { resize: vertical; min-height: 80px; font-family: 'Inter', sans-serif; }
+  .form-row .hint { color: var(--ink-faint); font-size: 12px; }
+  .form-row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .drawer-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    padding: 18px 32px;
+    border-top: 1px solid var(--border);
+    background: var(--bg-warm);
+  }
+  .drawer-footer .left, .drawer-footer .right {
+    display: flex; gap: 10px; align-items: center;
+  }
+  .stock-warn { color: var(--accent); font-weight: 500; }
+  .stock-out { color: var(--ink-faint); }
+  .status-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    display: inline-block; margin-right: 6px; vertical-align: middle;
+  }
+  .status-active { background: var(--green, #3a7a52); }
+  .status-out { background: var(--ink-faint); }
+  .status-inactive { background: var(--ink-faint); opacity: 0.5; }
+  .mono { font-family: 'IBM Plex Mono', monospace; font-size: 13px; }
+  .currency-prefix { color: var(--ink-faint); font-weight: 400; margin-right: 2px; }
+</style>
 </head>
 <body>
 <div id="page"></div>
 <script src="/assets/shell.js"></script>
 <script>
-if (Auth.require()) {
+(async () => {
+  'use strict';
+  if (!Auth.require()) return;
+
   const main = Shell.render({
     crumbs: [{ label: 'Dashboard', href: '/dashboard' }, { label: 'Products' }],
   });
+
+  const STATUSES = [
+    ['', 'All statuses'],
+    ['active', 'Active'],
+    ['out_of_stock', 'Out of stock'],
+    ['inactive', 'Archived'],
+  ];
+
   main.innerHTML = `
     <div class="page-head">
       <div>
         <span class="eyebrow">Catalogue</span>
         <h1 class="display mt-2">Products</h1>
-        <div class="meta">Manage what your bot sells.</div>
+        <div class="meta" id="products-meta">Loading…</div>
       </div>
       <div class="actions">
-        <a class="btn btn-secondary btn-sm" href="/">← Back to onboarding (add products here for now)</a>
+        <button class="btn btn-primary btn-sm" id="add-btn">+ New product</button>
       </div>
     </div>
-    <div class="card">
-      <div class="empty">
-        <div class="display">Products, coming next.</div>
-        <em>
-          Edit, archive, variants, image uploads, bulk CSV import.<br>
-          For now, use the onboarding page to add products.
-        </em>
+
+    <div class="toolbar">
+      <input type="search" id="f-search" placeholder="Search by name…"/>
+      <select id="f-status">
+        ${STATUSES.map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}
+      </select>
+      <button class="btn btn-ghost btn-sm" id="reset-btn">Reset</button>
+    </div>
+
+    <div id="products-wrap" class="mb-3"><div class="empty"><em>Loading products…</em></div></div>
+
+    <div class="drawer-overlay" id="drawer-overlay"></div>
+    <div class="drawer" id="drawer" aria-hidden="true">
+      <div class="drawer-head">
+        <div>
+          <span class="eyebrow plain" id="d-eyebrow">Product</span>
+          <h2 class="display mt-1" id="d-title">—</h2>
+        </div>
+        <button class="btn btn-ghost btn-sm" id="d-close">Close ×</button>
       </div>
+      <div class="drawer-body" id="d-body"></div>
+      <div class="drawer-footer" id="d-footer" style="display:none"></div>
     </div>
   `;
-}
+
+  const SYMBOLS = { USD: '$', EUR: '€', GBP: '£', CAD: 'C$', AUD: 'A$', INR: '₹' };
+
+  const store = {
+    products: [],
+    currency: 'USD',
+    currencySymbol: '$',
+    editingId: null, // null = new, string = existing
+  };
+
+  const state = {
+    search: '',
+    status: '',
+  };
+
+  // ---------- Formatting helpers ----------
+  const fmtDate = (s) => {
+    if (!s) return '—';
+    const d = new Date(s);
+    if (isNaN(d)) return '—';
+    return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+  };
+  function escapeHtml(s) {
+    return String(s ?? '')
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;')
+      .replaceAll("'", '&#039;');
+  }
+  function escapeAttr(s) {
+    return String(s ?? '').replaceAll('"', '&quot;').replaceAll("'", '&#039;');
+  }
+
+  // ---------- Load initial data ----------
+  async function loadMe() {
+    try {
+      const me = await API('GET', '/me');
+      store.currency = (me.merchant && me.merchant.currency_code) || 'USD';
+      store.currencySymbol = SYMBOLS[store.currency] || store.currency;
+    } catch (err) {
+      console.error('Failed to load merchant:', err);
+    }
+  }
+
+  async function loadProducts() {
+    const params = new URLSearchParams();
+    if (state.search) params.set('search', state.search);
+    if (state.status) params.set('status', state.status);
+    const qs = params.toString();
+    const url = '/products' + (qs ? '?' + qs : '');
+    try {
+      store.products = await API('GET', url);
+      render();
+    } catch (err) {
+      console.error('Failed to load products:', err);
+      document.getElementById('products-wrap').innerHTML = `
+        <div class="empty">
+          <div class="display">Couldn't load products.</div>
+          <em>Refresh the page or try again in a moment.</em>
+        </div>
+      `;
+      document.getElementById('products-meta').textContent = 'Error loading';
+    }
+  }
+
+  // ---------- Render ----------
+  function render() {
+    const wrap = document.getElementById('products-wrap');
+    const meta = document.getElementById('products-meta');
+    const products = store.products;
+    const isFiltered = state.search || state.status;
+
+    const totalLowStock = products.filter(p => p.status === 'active' && p.stock > 0 && p.stock <= 5).length;
+    const totalOut = products.filter(p => (p.status === 'active' && p.stock === 0) || p.status === 'out_of_stock').length;
+
+    if (products.length === 0) {
+      if (isFiltered) {
+        meta.textContent = 'No products match the filters.';
+        wrap.innerHTML = `
+          <div class="empty">
+            <div class="display">Nothing here.</div>
+            <em>Try adjusting your search or status filter.</em>
+          </div>
+        `;
+      } else {
+        meta.textContent = "You haven't added any products yet.";
+        wrap.innerHTML = `
+          <div class="empty">
+            <div class="display">Your catalogue, <em>ready when you are.</em></div>
+            <em>Add your first product and it'll be available in your bot immediately.</em>
+            <div style="margin-top:24px">
+              <button class="btn btn-primary" id="add-first-btn">+ Add your first product</button>
+            </div>
+          </div>
+        `;
+        document.getElementById('add-first-btn')?.addEventListener('click', openNew);
+      }
+      return;
+    }
+
+    const parts = [];
+    parts.push(`${products.length} ${products.length === 1 ? 'product' : 'products'}`);
+    if (totalLowStock > 0) parts.push(`${totalLowStock} low stock`);
+    if (totalOut > 0 && !state.status) parts.push(`${totalOut} out of stock`);
+    meta.textContent = parts.join(' · ');
+
+    const rows = products.map(p => {
+      const stockClass =
+        p.status !== 'active' ? 'stock-out' :
+        p.stock === 0 ? 'stock-out' :
+        p.stock <= 5 ? 'stock-warn' : '';
+      const statusLabel =
+        p.status === 'active' && p.stock === 0 ? 'Out of stock' :
+        p.status === 'active' ? 'Active' :
+        p.status === 'out_of_stock' ? 'Out of stock' :
+        'Archived';
+      const statusDotClass =
+        p.status === 'active' && p.stock > 0 ? 'status-active' :
+        p.status === 'inactive' ? 'status-inactive' : 'status-out';
+      return `
+        <tr class="products-row" data-id="${p.id}">
+          <td style="width:60px;padding:10px 12px">
+            <div class="product-thumb">
+              ${p.image_url
+                ? `<img src="${escapeAttr(p.image_url)}" alt=""/>`
+                : `<div class="product-thumb-placeholder"></div>`}
+            </div>
+          </td>
+          <td>
+            <div style="font-weight:500;color:var(--ink);margin-bottom:2px">${escapeHtml(p.name)}</div>
+            ${p.sku ? `<div class="mono" style="color:var(--ink-faint)">${escapeHtml(p.sku)}</div>` : ''}
+          </td>
+          <td class="mono"><span class="currency-prefix">${SYMBOLS[p.currency_code] || p.currency_code}</span>${Number(p.price).toFixed(2)}</td>
+          <td class="${stockClass}">${p.stock}</td>
+          <td><span class="status-dot ${statusDotClass}"></span>${statusLabel}</td>
+          <td class="mono" style="color:var(--ink-faint)">${fmtDate(p.created_at)}</td>
+        </tr>
+      `;
+    }).join('');
+
+    wrap.innerHTML = `
+      <table class="table">
+        <thead>
+          <tr>
+            <th></th>
+            <th>Name</th>
+            <th>Price</th>
+            <th>Stock</th>
+            <th>Status</th>
+            <th>Added</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    `;
+
+    wrap.querySelectorAll('tr.products-row').forEach(row => {
+      row.addEventListener('click', () => {
+        openEdit(row.dataset.id);
+      });
+    });
+  }
+
+  // ---------- Drawer: New / Edit ----------
+  function openNew() {
+    store.editingId = null;
+    document.getElementById('d-eyebrow').textContent = 'New product';
+    document.getElementById('d-title').textContent = 'Add a product';
+    renderForm({
+      name: '',
+      description: '',
+      price: '',
+      stock: 0,
+      image_url: '',
+      status: 'active',
+      sku: '',
+    });
+    openDrawer();
+  }
+
+  function openEdit(id) {
+    const p = store.products.find(x => x.id === id);
+    if (!p) return;
+    store.editingId = id;
+    document.getElementById('d-eyebrow').textContent = 'Edit product';
+    document.getElementById('d-title').textContent = p.name;
+    renderForm({
+      name: p.name || '',
+      description: p.description || '',
+      price: p.price || '',
+      stock: p.stock ?? 0,
+      image_url: p.image_url || '',
+      status: p.status || 'active',
+      sku: p.sku || '',
+    });
+    openDrawer();
+  }
+
+  function renderForm(v) {
+    const body = document.getElementById('d-body');
+    const footer = document.getElementById('d-footer');
+    const isNew = store.editingId === null;
+
+    body.innerHTML = `
+      <div class="product-preview" id="preview">
+        ${v.image_url
+          ? `<img src="${escapeAttr(v.image_url)}" alt="" onerror="this.parentElement.innerHTML='<div class=ph>Image URL invalid</div>'"/>`
+          : `<div class="ph">No image</div>`
+        }
+      </div>
+
+      <div class="form-row">
+        <label for="p-name">Name</label>
+        <input type="text" id="p-name" value="${escapeAttr(v.name)}" maxlength="255" placeholder="e.g. Kenyan peaberry, 250g bag"/>
+      </div>
+
+      <div class="form-row">
+        <label for="p-description">Description</label>
+        <textarea id="p-description" placeholder="What makes this product special? Buyers will see this in the bot.">${escapeHtml(v.description)}</textarea>
+      </div>
+
+      <div class="form-row-2">
+        <div class="form-row">
+          <label for="p-price">Price (${store.currency})</label>
+          <input type="number" id="p-price" value="${escapeAttr(v.price)}" min="0.01" step="0.01" placeholder="0.00"/>
+        </div>
+        <div class="form-row">
+          <label for="p-stock">Stock</label>
+          <input type="number" id="p-stock" value="${v.stock}" min="0" step="1"/>
+          <div class="hint">How many units you have on hand.</div>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <label for="p-image">Image URL</label>
+        <input type="url" id="p-image" value="${escapeAttr(v.image_url)}" placeholder="https://..."/>
+        <div class="hint">Paste a public URL. Direct uploads coming soon.</div>
+      </div>
+
+      <div class="form-row-2">
+        <div class="form-row">
+          <label for="p-sku">SKU</label>
+          <input type="text" id="p-sku" value="${escapeAttr(v.sku)}" maxlength="64" placeholder="Optional internal code"/>
+        </div>
+        <div class="form-row">
+          <label for="p-status">Status</label>
+          <select id="p-status">
+            <option value="active" ${v.status === 'active' ? 'selected' : ''}>Active — visible in bot</option>
+            <option value="inactive" ${v.status === 'inactive' ? 'selected' : ''}>Archived — hidden</option>
+            <option value="out_of_stock" ${v.status === 'out_of_stock' ? 'selected' : ''}>Out of stock</option>
+          </select>
+        </div>
+      </div>
+    `;
+
+    footer.style.display = 'flex';
+    footer.innerHTML = `
+      <div class="left">
+        ${isNew ? '' : `<button class="btn btn-ghost btn-sm" id="d-archive">${v.status === 'inactive' ? 'Unarchive' : 'Archive'}</button>`}
+      </div>
+      <div class="right">
+        <button class="btn btn-secondary btn-sm" id="d-cancel">Cancel</button>
+        <button class="btn btn-primary btn-sm" id="d-save">${isNew ? 'Create product' : 'Save changes'}</button>
+      </div>
+    `;
+
+    document.getElementById('p-image').addEventListener('input', (e) => {
+      const url = e.target.value.trim();
+      const preview = document.getElementById('preview');
+      if (url) {
+        preview.innerHTML = `<img src="${escapeAttr(url)}" alt="" onerror="this.parentElement.innerHTML='<div class=ph>Image URL invalid</div>'"/>`;
+      } else {
+        preview.innerHTML = `<div class="ph">No image</div>`;
+      }
+    });
+
+    document.getElementById('d-save').addEventListener('click', save);
+    document.getElementById('d-cancel').addEventListener('click', closeDrawer);
+
+    if (!isNew) {
+      document.getElementById('d-archive').addEventListener('click', () => {
+        const currentStatus = document.getElementById('p-status').value;
+        const next = currentStatus === 'inactive' ? 'active' : 'inactive';
+        document.getElementById('p-status').value = next;
+        save();
+      });
+    }
+  }
+
+  async function save() {
+    const name = document.getElementById('p-name').value.trim();
+    const description = document.getElementById('p-description').value.trim();
+    const priceStr = document.getElementById('p-price').value;
+    const stockStr = document.getElementById('p-stock').value;
+    const image_url = document.getElementById('p-image').value.trim();
+    const sku = document.getElementById('p-sku').value.trim();
+    const status = document.getElementById('p-status').value;
+
+    if (!name) return Toast.err('Name is required.');
+    const price = parseFloat(priceStr);
+    if (!isFinite(price) || price <= 0) return Toast.err('Price must be greater than zero.');
+    const stock = parseInt(stockStr, 10);
+    if (!isFinite(stock) || stock < 0) return Toast.err('Stock must be zero or greater.');
+    if (image_url && !/^https?:\/\//i.test(image_url)) {
+      return Toast.err('Image URL must start with http:// or https://');
+    }
+
+    const saveBtn = document.getElementById('d-save');
+    saveBtn.disabled = true;
+    saveBtn.textContent = 'Saving…';
+
+    try {
+      if (store.editingId === null) {
+        const payload = { name, price, stock };
+        if (description) payload.description = description;
+        if (image_url) payload.image_url = image_url;
+        await API('POST', '/products', payload);
+        Toast.ok('Product created.');
+      } else {
+        const payload = {
+          name,
+          description: description || null,
+          price,
+          stock,
+          image_url: image_url || null,
+          sku: sku || null,
+          status,
+        };
+        await API('PATCH', '/products/' + encodeURIComponent(store.editingId), payload);
+        Toast.ok('Product updated.');
+      }
+      closeDrawer();
+      await loadProducts();
+    } catch (err) {
+      console.error('Save failed:', err);
+      Toast.err(err.message || 'Could not save product.');
+      saveBtn.disabled = false;
+      saveBtn.textContent = store.editingId === null ? 'Create product' : 'Save changes';
+    }
+  }
+
+  function openDrawer() {
+    document.getElementById('drawer').classList.add('open');
+    document.getElementById('drawer-overlay').classList.add('open');
+    document.getElementById('drawer').setAttribute('aria-hidden', 'false');
+    setTimeout(() => document.getElementById('p-name')?.focus(), 100);
+  }
+  function closeDrawer() {
+    document.getElementById('drawer').classList.remove('open');
+    document.getElementById('drawer-overlay').classList.remove('open');
+    document.getElementById('drawer').setAttribute('aria-hidden', 'true');
+    store.editingId = null;
+    document.getElementById('d-footer').style.display = 'none';
+  }
+
+  // ---------- Event wiring ----------
+  document.getElementById('add-btn').addEventListener('click', openNew);
+  document.getElementById('d-close').addEventListener('click', closeDrawer);
+  document.getElementById('drawer-overlay').addEventListener('click', closeDrawer);
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && document.getElementById('drawer').classList.contains('open')) {
+      closeDrawer();
+    }
+  });
+
+  let searchTimer;
+  document.getElementById('f-search').addEventListener('input', (e) => {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => {
+      state.search = e.target.value;
+      loadProducts();
+    }, 250);
+  });
+  document.getElementById('f-status').addEventListener('change', (e) => {
+    state.status = e.target.value;
+    loadProducts();
+  });
+  document.getElementById('reset-btn').addEventListener('click', () => {
+    state.search = '';
+    state.status = '';
+    document.getElementById('f-search').value = '';
+    document.getElementById('f-status').value = '';
+    loadProducts();
+  });
+
+  await loadMe();
+  await loadProducts();
+})();
 </script>
 </body>
 </html>

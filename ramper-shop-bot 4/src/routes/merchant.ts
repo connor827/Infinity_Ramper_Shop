@@ -12,6 +12,8 @@ import {
 import {
   createProduct,
   listActiveProducts,
+  listProductsForMerchant,
+  updateProduct,
   getRecentOrdersForMerchant,
   listOrdersForMerchant,
   countOrdersForMerchant,
@@ -310,8 +312,23 @@ const productSchema = z.object({
   image_url: z.string().url().optional(),
 });
 
+const productPatchSchema = z.object({
+  name: z.string().min(1).max(255).optional(),
+  description: z.string().nullable().optional(),
+  price: z.number().positive().optional(),
+  stock: z.number().int().min(0).optional(),
+  image_url: z.string().url().nullable().optional(),
+  status: z.enum(['active', 'inactive', 'out_of_stock']).optional(),
+  sku: z.string().max(64).nullable().optional(),
+});
+
 merchantRouter.get('/products', requireAuth, async (req: AuthedRequest, res) => {
-  const products = await listActiveProducts(req.merchantId!);
+  const asStr = (v: unknown): string | undefined =>
+    typeof v === 'string' ? v : undefined;
+  const products = await listProductsForMerchant(req.merchantId!, {
+    status: asStr(req.query.status),
+    search: asStr(req.query.search),
+  });
   res.json(products);
 });
 
@@ -331,6 +348,20 @@ merchantRouter.post('/products', requireAuth, async (req: AuthedRequest, res) =>
     currency_code: parsed.data.currency_code ?? merchant.currency_code,
   });
   res.status(201).json(product);
+});
+
+merchantRouter.patch('/products/:id', requireAuth, async (req: AuthedRequest, res) => {
+  const parsed = productPatchSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.flatten() });
+    return;
+  }
+  const updated = await updateProduct(req.merchantId!, String(req.params.id), parsed.data);
+  if (!updated) {
+    res.status(404).json({ error: 'not found' });
+    return;
+  }
+  res.json(updated);
 });
 
 // ---------------------------------------------------------------------------

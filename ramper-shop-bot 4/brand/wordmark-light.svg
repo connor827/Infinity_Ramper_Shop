@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="360" height="60" viewBox="0 0 360 60" role="img" aria-label="Infinity Ramper">
+  <title>Infinity Ramper</title>
+  <desc>The Infinity Ramper wordmark. "Infinity" in Funnel Display bold, "Ramper" in Funnel Display italic light, set in ink on a transparent background.</desc>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Funnel+Display:ital,wght@0,700;1,300&amp;display=swap');
+    .bold  { font-family: 'Funnel Display', 'Helvetica Neue', Arial, sans-serif; font-weight: 700; letter-spacing: -0.04em; fill: #0a0a0a; }
+    .light { font-family: 'Funnel Display', 'Helvetica Neue', Arial, sans-serif; font-weight: 300; font-style: italic; letter-spacing: -0.03em; fill: #555555; }
+  </style>
+  <text x="0" y="42" font-size="40" class="bold">Infinity</text>
+  <text x="165" y="42" font-size="40" class="light">Ramper</text>
+</svg>

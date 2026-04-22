@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900" role="img" aria-label="What we shipped this quarter.">
+  <title>Week 12 · Changelog</title>
+  <desc>Changelog-style card with shipped milestones, each row a short description with the date.</desc>
+  <rect width="1600" height="900" fill="#f0ede6"/>
+
+  <line x1="120" y1="130" x2="152" y2="130" stroke="#bbbbbb" stroke-width="1.5"/>
+  <text x="172" y="136" font-family="'Funnel Display',sans-serif" font-weight="500" font-size="17" letter-spacing="2" fill="#bbbbbb">Q2 CHANGELOG</text>
+  <text x="120" y="230" font-family="'Funnel Display',serif" font-size="68" font-weight="500" letter-spacing="-2.72" fill="#0a0a0a">What we <tspan font-weight="300" font-style="italic" fill="#FFAC1C">shipped.</tspan></text>
+
+  <line x1="120" y1="330" x2="1480" y2="330" stroke="#0a0a0a" stroke-width="1"/>
+
+  <text x="120" y="390" font-family="'IBM Plex Mono',monospace" font-size="15" fill="#FFAC1C">Apr 2026</text>
+  <text x="320" y="390" font-family="'Funnel Display',sans-serif" font-weight="500" font-size="22" letter-spacing="-0.66" fill="#0a0a0a">Shops · Telegram-native storefront</text>
+  <text x="320" y="420" font-family="'Funnel Display',sans-serif" font-size="17" fill="#888">Merchants can now accept payments inside a Telegram bot. Free to open.</text>
+
+  <line x1="120" y1="456" x2="1480" y2="456" stroke="#e8e5e0" stroke-width="1"/>
+
+  <text x="120" y="510" font-family="'IBM Plex Mono',monospace" font-size="15" fill="#FFAC1C">Mar 2026</text>
+  <text x="320" y="510" font-family="'Funnel Display',sans-serif" font-weight="500" font-size="22" letter-spacing="-0.66" fill="#0a0a0a">WooCommerce plugin live</text>
+  <text x="320" y="540" font-family="'Funnel Display',sans-serif" font-size="17" fill="#888">Drop-in Infinity Ramper checkout for any WordPress store. Under 5 minutes.</text>
+
+  <line x1="120" y1="576" x2="1480" y2="576" stroke="#e8e5e0" stroke-width="1"/>
+
+  <text x="120" y="630" font-family="'IBM Plex Mono',monospace" font-size="15" fill="#FFAC1C">Feb 2026</text>
+  <text x="320" y="630" font-family="'Funnel Display',sans-serif" font-weight="500" font-size="22" letter-spacing="-0.66" fill="#0a0a0a">Payment-link generator · no code</text>
+  <text x="320" y="660" font-family="'Funnel Display',sans-serif" font-size="17" fill="#888">Invoice any client in seconds without writing a line of code. Consultants love it.</text>
+
+  <line x1="120" y1="696" x2="1480" y2="696" stroke="#e8e5e0" stroke-width="1"/>
+
+  <text x="120" y="750" font-family="'IBM Plex Mono',monospace" font-size="15" fill="#FFAC1C">Jan 2026</text>
+  <text x="320" y="750" font-family="'Funnel Display',sans-serif" font-weight="500" font-size="22" letter-spacing="-0.66" fill="#0a0a0a">Partnered with 26 regulated on-ramps</text>
+  <text x="320" y="780" font-family="'Funnel Display',sans-serif" font-size="17" fill="#888">MoonPay · Ramp · Coinbase · Stripe · Transak and 21 others. Global coverage.</text>
+
+  <line x1="120" y1="816" x2="1480" y2="816" stroke="#0a0a0a" stroke-width="1"/>
+
+  <text x="120" y="868" font-family="'IBM Plex Mono',monospace" font-size="15" fill="#bbbbbb">infinityramper.com</text>
+</svg>

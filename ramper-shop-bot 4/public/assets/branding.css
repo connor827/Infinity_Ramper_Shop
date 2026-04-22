@@ -168,6 +168,21 @@ h3.display {
   justify-content: space-between;
 }
 
+/* Logo image — show the right variant for the active theme */
+.brand-logo {
+  display: block;
+  width: 100%;
+  max-width: 180px;
+  height: auto;
+}
+.brand-logo img {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+[data-theme='dark'] .brand-logo-light { display: none; }
+[data-theme='light'] .brand-logo-dark { display: none; }
+
 .sidebar nav {
   display: flex;
   flex-direction: column;

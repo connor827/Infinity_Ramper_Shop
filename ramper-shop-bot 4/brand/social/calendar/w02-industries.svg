@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900" role="img" aria-label="Built for industries traditional processors refuse.">
+  <title>Week 2 · Who it's for</title>
+  <desc>Six-tile grid of supported industries that traditional gateways typically decline.</desc>
+  <rect width="1600" height="900" fill="#f0ede6"/>
+  <line x1="120" y1="120" x2="152" y2="120" stroke="#bbbbbb" stroke-width="1.5"/>
+  <text x="172" y="126" font-family="'Funnel Display',sans-serif" font-weight="500" font-size="17" letter-spacing="2" fill="#bbbbbb">INDUSTRIES WE WORK WITH</text>
+  <text x="120" y="220" font-family="'Funnel Display',serif" font-size="76" font-weight="500" letter-spacing="-3.04" fill="#0a0a0a">Built for who the <tspan font-weight="300" font-style="italic" fill="#FFAC1C">old system ignores.</tspan></text>
+
+  <rect x="120" y="290" width="1360" height="480" fill="#e8e5e0"/>
+  <rect x="121" y="291" width="451.33" height="239" fill="#f0ede6"/>
+  <rect x="574.33" y="291" width="451.34" height="239" fill="#f0ede6"/>
+  <rect x="1027.67" y="291" width="452.33" height="239" fill="#f0ede6"/>
+  <rect x="121" y="531" width="451.33" height="239" fill="#f0ede6"/>
+  <rect x="574.33" y="531" width="451.34" height="239" fill="#f0ede6"/>
+  <rect x="1027.67" y="531" width="452.33" height="239" fill="#f0ede6"/>
+
+  <text x="155" y="360" font-family="'IBM Plex Mono',monospace" font-size="14" fill="#bbbbbb">→</text>
+  <text x="155" y="420" font-family="'Funnel Display',sans-serif" font-weight="500" font-size="30" letter-spacing="-0.9" fill="#0a0a0a">CBD &amp; supplements</text>
+  <text x="155" y="468" font-family="'Funnel Display',sans-serif" font-size="18" fill="#888">Banned by Stripe. Supported here.</text>
+
+  <text x="608" y="360" font-family="'IBM Plex Mono',monospace" font-size="14" fill="#bbbbbb">→</text>
+  <text x="608" y="420" font-family="'Funnel Display',sans-serif" font-weight="500" font-size="30" letter-spacing="-0.9" fill="#0a0a0a">Forex &amp; trading</text>
+  <text x="608" y="468" font-family="'Funnel Display',sans-serif" font-size="18" fill="#888">High-risk by convention, not by reality.</text>
+
+  <text x="1062" y="360" font-family="'IBM Plex Mono',monospace" font-size="14" fill="#bbbbbb">→</text>
+  <text x="1062" y="420" font-family="'Funnel Display',sans-serif" font-weight="500" font-size="30" letter-spacing="-0.9" fill="#0a0a0a">Adult content</text>
+  <text x="1062" y="468" font-family="'Funnel Display',sans-serif" font-size="18" fill="#888">Creators legitimately locked out.</text>
+
+  <text x="155" y="600" font-family="'IBM Plex Mono',monospace" font-size="14" fill="#bbbbbb">→</text>
+  <text x="155" y="660" font-family="'Funnel Display',sans-serif" font-weight="500" font-size="30" letter-spacing="-0.9" fill="#0a0a0a">Gaming &amp; NFTs</text>
+  <text x="155" y="708" font-family="'Funnel Display',sans-serif" font-size="18" fill="#888">Where payment gateways panic.</text>
+
+  <text x="608" y="600" font-family="'IBM Plex Mono',monospace" font-size="14" fill="#bbbbbb">→</text>
+  <text x="608" y="660" font-family="'Funnel Display',sans-serif" font-weight="500" font-size="30" letter-spacing="-0.9" fill="#0a0a0a">Digital &amp; SaaS</text>
+  <text x="608" y="708" font-family="'Funnel Display',sans-serif" font-size="18" fill="#888">Global customers, instant settlement.</text>
+
+  <text x="1062" y="600" font-family="'IBM Plex Mono',monospace" font-size="14" fill="#bbbbbb">→</text>
+  <text x="1062" y="660" font-family="'Funnel Display',sans-serif" font-weight="500" font-size="30" letter-spacing="-0.9" fill="#0a0a0a">E-commerce</text>
+  <text x="1062" y="708" font-family="'Funnel Display',sans-serif" font-size="18" fill="#888">Card payments without the freezes.</text>
+
+  <text x="120" y="850" font-family="'IBM Plex Mono',monospace" font-size="16" fill="#555555">infinityramper.com</text>
+</svg>

@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900" role="img" aria-label="Infinity Ramper vs traditional gateways.">
+  <title>Week 6 · Comparison card</title>
+  <desc>Five-row comparison between Infinity Ramper and traditional payment gateways. Ramper column in ink, competitors muted.</desc>
+  <rect width="1600" height="900" fill="#f0ede6"/>
+  <line x1="120" y1="130" x2="152" y2="130" stroke="#bbbbbb" stroke-width="1.5"/>
+  <text x="172" y="136" font-family="'Funnel Display',sans-serif" font-weight="500" font-size="17" letter-spacing="2" fill="#bbbbbb">HONEST COMPARISON</text>
+  <text x="120" y="230" font-family="'Funnel Display',serif" font-size="68" font-weight="500" letter-spacing="-2.72" fill="#0a0a0a">The difference, <tspan font-weight="300" font-style="italic" fill="#FFAC1C">plainly.</tspan></text>
+
+  <line x1="120" y1="340" x2="1480" y2="340" stroke="#0a0a0a" stroke-width="1"/>
+  <text x="120" y="370" font-family="'Funnel Display',sans-serif" font-size="13" letter-spacing="1.3" fill="#bbbbbb" font-weight="500">FEATURE</text>
+  <text x="700" y="370" font-family="'Funnel Display',sans-serif" font-size="13" letter-spacing="1.3" fill="#0a0a0a" font-weight="500">INFINITY RAMPER</text>
+  <text x="1130" y="370" font-family="'Funnel Display',sans-serif" font-size="13" letter-spacing="1.3" fill="#bbbbbb" font-weight="500">STRIPE · PAYPAL</text>
+
+  <line x1="120" y1="400" x2="1480" y2="400" stroke="#e8e5e0" stroke-width="1"/>
+  <text x="120" y="452" font-family="'Funnel Display',sans-serif" font-size="22" letter-spacing="-0.66" fill="#555">Settlement time</text>
+  <text x="700" y="452" font-family="'Funnel Display',sans-serif" font-size="22" letter-spacing="-0.66" fill="#0a0a0a" font-weight="500">~10 seconds</text>
+  <text x="1130" y="452" font-family="'Funnel Display',sans-serif" font-size="22" letter-spacing="-0.66" fill="#888">2 – 7 days</text>
+
+  <line x1="120" y1="486" x2="1480" y2="486" stroke="#e8e5e0" stroke-width="1"/>
+  <text x="120" y="538" font-family="'Funnel Display',sans-serif" font-size="22" letter-spacing="-0.66" fill="#555">Custody of funds</text>
+  <text x="700" y="538" font-family="'Funnel Display',sans-serif" font-size="22" letter-spacing="-0.66" fill="#0a0a0a" font-weight="500">You hold it</text>
+  <text x="1130" y="538" font-family="'Funnel Display',sans-serif" font-size="22" letter-spacing="-0.66" fill="#888">They hold it</text>
+
+  <line x1="120" y1="572" x2="1480" y2="572" stroke="#e8e5e0" stroke-width="1"/>
+  <text x="120" y="624" font-family="'Funnel Display',sans-serif" font-size="22" letter-spacing="-0.66" fill="#555">Chargeback rate</text>
+  <text x="700" y="624" font-family="'Funnel Display',sans-serif" font-size="22" letter-spacing="-0.66" fill="#0a0a0a" font-weight="500">0% — blockchain-final</text>
+  <text x="1130" y="624" font-family="'Funnel Display',sans-serif" font-size="22" letter-spacing="-0.66" fill="#888">Elevated</text>
+
+  <line x1="120" y1="658" x2="1480" y2="658" stroke="#e8e5e0" stroke-width="1"/>
+  <text x="120" y="710" font-family="'Funnel Display',sans-serif" font-size="22" letter-spacing="-0.66" fill="#555">High-risk industries</text>
+  <text x="700" y="710" font-family="'Funnel Display',sans-serif" font-size="22" letter-spacing="-0.66" fill="#0a0a0a" font-weight="500">Fully supported</text>
+  <text x="1130" y="710" font-family="'Funnel Display',sans-serif" font-size="22" letter-spacing="-0.66" fill="#888">Often banned</text>
+
+  <line x1="120" y1="744" x2="1480" y2="744" stroke="#e8e5e0" stroke-width="1"/>
+  <text x="120" y="796" font-family="'Funnel Display',sans-serif" font-size="22" letter-spacing="-0.66" fill="#555">Monthly cost</text>
+  <text x="700" y="796" font-family="'Funnel Display',sans-serif" font-size="22" letter-spacing="-0.66" fill="#0a0a0a" font-weight="500">$0</text>
+  <text x="1130" y="796" font-family="'Funnel Display',sans-serif" font-size="22" letter-spacing="-0.66" fill="#888">Subscription + fees</text>
+  <line x1="120" y1="830" x2="1480" y2="830" stroke="#0a0a0a" stroke-width="1"/>
+
+  <text x="120" y="878" font-family="'IBM Plex Mono',monospace" font-size="15" fill="#bbbbbb">infinityramper.com</text>
+</svg>

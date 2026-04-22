@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80" viewBox="0 0 80 80" role="img" aria-label="Infinity Ramper mark">
+  <title>Infinity Ramper</title>
+  <desc>A single-stroke mark: a ramp rising into an infinity loop. Encodes the two halves of the Infinity Ramper name.</desc>
+  <path d="M 14 52 L 30 52 A 18 18 0 1 1 60 32 L 72 32 A 28 28 0 1 0 40 60 L 20 60 A 6 6 0 0 1 14 54 Z" fill="none" stroke="#0a0a0a" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>
+</svg>

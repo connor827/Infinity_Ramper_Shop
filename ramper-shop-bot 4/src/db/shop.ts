@@ -16,6 +16,68 @@ export async function listActiveProducts(merchantId: string): Promise<Product[]>
   return rows;
 }
 
+// List ALL products for the merchant dashboard — includes inactive, out-of-stock.
+// Optional status filter: 'active' | 'inactive' | 'out_of_stock' | undefined (all).
+export async function listProductsForMerchant(
+  merchantId: string,
+  opts: { status?: string; search?: string } = {}
+): Promise<Product[]> {
+  const values: unknown[] = [merchantId];
+  const where: string[] = ['merchant_id = $1'];
+  if (opts.status && ['active', 'inactive', 'out_of_stock'].includes(opts.status)) {
+    values.push(opts.status);
+    where.push(`status = $${values.length}`);
+  }
+  if (opts.search && opts.search.trim()) {
+    values.push(`%${opts.search.trim()}%`);
+    where.push(`name ILIKE $${values.length}`);
+  }
+  const { rows } = await query<Product>(
+    `SELECT * FROM products
+      WHERE ${where.join(' AND ')}
+      ORDER BY created_at DESC`,
+    values
+  );
+  return rows;
+}
+
+// Apply a partial update to a product. Only columns in the allow-list are updatable.
+export async function updateProduct(
+  merchantId: string,
+  productId: string,
+  patch: Partial<{
+    name: string;
+    description: string | null;
+    price: number;
+    stock: number;
+    image_url: string | null;
+    status: 'active' | 'inactive' | 'out_of_stock';
+    sku: string | null;
+  }>
+): Promise<Product | null> {
+  const fields: string[] = [];
+  const values: unknown[] = [];
+  let i = 1;
+  for (const [key, value] of Object.entries(patch)) {
+    if (value === undefined) continue;
+    fields.push(`${key} = $${i++}`);
+    values.push(value);
+  }
+  if (fields.length === 0) {
+    return getProduct(merchantId, productId);
+  }
+  fields.push(`updated_at = NOW()`);
+  values.push(productId, merchantId);
+  const { rows } = await query<Product>(
+    `UPDATE products
+        SET ${fields.join(', ')}
+      WHERE id = $${i++} AND merchant_id = $${i}
+      RETURNING *`,
+    values
+  );
+  return rows[0] ?? null;
+}
+
 export async function getProduct(
   merchantId: string,
   productId: string

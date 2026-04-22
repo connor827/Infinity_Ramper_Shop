@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1080" viewBox="0 0 1080 1080" role="img" aria-label="Infinity Ramper — Your customers pay by card. You receive USDC.">
+  <title>Infinity Ramper — universal square post</title>
+  <desc>1080x1080 square post. Headline "Your customers pay by card. You receive USDC." with amber italic on the second line. Works on Instagram, LinkedIn, Facebook, X.</desc>
+
+  <rect width="1080" height="1080" fill="#f0ede6"/>
+
+  <line x1="100" y1="140" x2="128" y2="140" stroke="#bbbbbb" stroke-width="1.5"/>
+  <text x="144" y="145" font-family="'Funnel Display','Helvetica Neue',Arial,sans-serif" font-weight="500" font-size="18" letter-spacing="2.2" fill="#bbbbbb">INFINITY RAMPER</text>
+
+  <text x="100" y="420" font-family="'Funnel Display',serif" font-size="98" font-weight="500" letter-spacing="-3.9" fill="#0a0a0a">Your customers</text>
+  <text x="100" y="530" font-family="'Funnel Display',serif" font-size="98" font-weight="500" letter-spacing="-3.9" fill="#0a0a0a">pay by card.</text>
+  <text x="100" y="680" font-family="'Funnel Display',serif" font-size="98" font-weight="300" font-style="italic" letter-spacing="-2.9" fill="#FFAC1C">You receive USDC.</text>
+
+  <text x="100" y="810" font-family="'Funnel Display',serif" font-size="28" font-weight="400" letter-spacing="-0.84" fill="#555555">Card, Apple Pay, bank, crypto — settled direct</text>
+  <text x="100" y="850" font-family="'Funnel Display',serif" font-size="28" font-weight="400" letter-spacing="-0.84" fill="#555555">to your Polygon wallet in ~10 seconds.</text>
+
+  <circle cx="120" cy="1000" r="5" fill="#FFAC1C"/>
+  <text x="140" y="1005" font-family="'IBM Plex Mono',monospace" font-size="17" fill="#555555">infinityramper.com</text>
+  <text x="980" y="1005" font-family="'IBM Plex Mono',monospace" font-size="17" fill="#555555" text-anchor="end">Non-custodial · 0% chargebacks</text>
+</svg>

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900" role="img" aria-label="Fund freezes are a feature of the old system.">
+  <title>Week 11 · Industry commentary</title>
+  <desc>Editorial opinion card with a pointed statement about fund freezes and their structural cause.</desc>
+  <rect width="1600" height="900" fill="#f0ede6"/>
+
+  <line x1="120" y1="130" x2="152" y2="130" stroke="#bbbbbb" stroke-width="1.5"/>
+  <text x="172" y="136" font-family="'Funnel Display',sans-serif" font-weight="500" font-size="17" letter-spacing="2" fill="#bbbbbb">STATEMENT</text>
+
+  <text x="120" y="340" font-family="'Funnel Display',serif" font-size="80" font-weight="500" letter-spacing="-3.2" fill="#0a0a0a">Fund freezes aren't a bug.</text>
+  <text x="120" y="440" font-family="'Funnel Display',serif" font-size="80" font-weight="500" letter-spacing="-3.2" fill="#0a0a0a">They're a feature of the</text>
+  <text x="120" y="540" font-family="'Funnel Display',serif" font-size="80" font-weight="300" font-style="italic" letter-spacing="-2.4" fill="#FFAC1C">architecture they chose.</text>
+
+  <text x="120" y="680" font-family="'Funnel Display',serif" font-size="24" font-weight="400" letter-spacing="-0.72" fill="#555555">When a processor holds your funds between the buyer's payment and your payout,</text>
+  <text x="120" y="716" font-family="'Funnel Display',serif" font-size="24" font-weight="400" letter-spacing="-0.72" fill="#555555">they reserve the right to delay, review, or reverse. It's not malice. It's the only</text>
+  <text x="120" y="752" font-family="'Funnel Display',serif" font-size="24" font-weight="400" letter-spacing="-0.72" fill="#555555">way the system works. The alternative is to not hold the funds.</text>
+
+  <text x="120" y="860" font-family="'IBM Plex Mono',monospace" font-size="15" fill="#bbbbbb">infinityramper.com</text>
+</svg>
