@@ -271,6 +271,14 @@ const storeSettingsSchema = z.object({
   admin_telegram_id: z.number().int().positive().nullable().optional(),
 });
 
+// Bot customisation fields — all optional, all nullable (empty = use defaults).
+// Length caps prevent bot messages blowing past Telegram limits (~4096 chars total).
+const botCopySchema = z.object({
+  welcome_message: z.string().max(300).nullable().optional(),
+  description: z.string().max(500).nullable().optional(),
+  order_received_message: z.string().max(500).nullable().optional(),
+});
+
 merchantRouter.patch('/store', requireAuth, async (req: AuthedRequest, res) => {
   const parsed = storeSettingsSchema.safeParse(req.body);
   if (!parsed.success) {
@@ -306,8 +314,46 @@ merchantRouter.patch('/store', requireAuth, async (req: AuthedRequest, res) => {
   res.json(updated ? publicMerchant(updated) : { ok: true });
 });
 
-// Update payout wallet from Settings (post-onboarding). Reuses signature-verify
-// logic but does NOT reset onboarding_step.
+// Update bot-facing text (welcome message, description, order confirmation).
+// All fields optional. Empty string = clear to default. Null = same.
+merchantRouter.patch('/bot-copy', requireAuth, async (req: AuthedRequest, res) => {
+  const parsed = botCopySchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.flatten() });
+    return;
+  }
+  const fields: string[] = [];
+  const values: any[] = [req.merchantId];
+  let i = 2;
+  // Helper — undefined means "don't touch"; null or empty string means "clear"
+  const normalise = (v: string | null | undefined): string | null => {
+    if (v === undefined) return undefined as any;
+    if (v === null) return null;
+    const trimmed = v.trim();
+    return trimmed.length === 0 ? null : trimmed;
+  };
+  for (const key of ['welcome_message', 'description', 'order_received_message'] as const) {
+    const val = normalise(parsed.data[key]);
+    if (val !== undefined) {
+      fields.push(`${key} = $${i++}`);
+      values.push(val);
+    }
+  }
+  if (fields.length === 0) {
+    res.status(400).json({ error: 'no fields to update' });
+    return;
+  }
+  fields.push(`updated_at = NOW()`);
+  const { pool } = await import('../db/pool.js');
+  await pool.query(
+    `UPDATE merchants SET ${fields.join(', ')} WHERE id = $1`,
+    values
+  );
+  // Bust cached bot instance so any live webhook requests pick up new copy
+  const merchant = await getMerchantById(req.merchantId!);
+  if (merchant?.bot_token) invalidateBot(merchant.bot_token);
+  res.json(merchant ? publicMerchant(merchant) : { ok: true });
+});
 merchantRouter.patch('/wallet', requireAuth, async (req: AuthedRequest, res) => {
   const parsed = walletSchema.safeParse(req.body);
   if (!parsed.success) {
@@ -634,6 +680,9 @@ function publicMerchant(m: {
   currency_code: string;
   status: string;
   onboarding_step: string;
+  welcome_message: string | null;
+  description: string | null;
+  order_received_message: string | null;
 }) {
   return {
     id: m.id,
@@ -648,5 +697,8 @@ function publicMerchant(m: {
     currency_code: m.currency_code,
     status: m.status,
     onboarding_step: m.onboarding_step,
+    welcome_message: m.welcome_message,
+    description: m.description,
+    order_received_message: m.order_received_message,
   };
 }

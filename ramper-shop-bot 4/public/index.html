@@ -321,28 +321,42 @@
     document.getElementById('loginForm').addEventListener('submit', async (e) => {
       e.preventDefault();
       clearAuthError();
+      const email = val('loginEmail');
+      const password = val('loginPassword');
+      if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        return authError('Please enter a valid email address.');
+      }
+      if (!password) {
+        return authError('Please enter your password.');
+      }
       try {
-        const r = await API('POST', '/auth/login', {
-          email: val('loginEmail'), password: val('loginPassword'),
-        });
+        const r = await API('POST', '/auth/login', { email, password });
         Auth.token = r.token;
         const me = await API('GET', '/me');
         window.location.href = me.status === 'active' ? '/dashboard' : '/';
-      } catch (err) { authError(err.message); }
+      } catch (err) { authError(translateError(err.message, 'login')); }
     });
 
     document.getElementById('signupForm').addEventListener('submit', async (e) => {
       e.preventDefault();
       clearAuthError();
+      const email = val('signupEmail');
+      const password = val('signupPassword');
+      const store_name = val('signupStoreName');
+      if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        return authError('Please enter a valid email address.');
+      }
+      if (password.length < 8) {
+        return authError('Password must be at least 8 characters.');
+      }
+      if (!store_name) {
+        return authError('What should we call your store?');
+      }
       try {
-        const r = await API('POST', '/auth/signup', {
-          email: val('signupEmail'),
-          password: val('signupPassword'),
-          store_name: val('signupStoreName'),
-        });
+        const r = await API('POST', '/auth/signup', { email, password, store_name });
         Auth.token = r.token;
         window.location.href = '/'; // re-runs bootstrap → onboarding
-      } catch (err) { authError(err.message); }
+      } catch (err) { authError(translateError(err.message, 'signup')); }
     });
 
     function authError(msg) {
@@ -355,6 +369,92 @@
   }
 
   function val(id) { return document.getElementById(id).value.trim(); }
+
+  // Translate raw server/Zod errors into human-readable messages for the UI.
+  // Server might return a string, or a Zod flatten like {formErrors:[], fieldErrors:{bot_token:['...']}}.
+  function translateError(raw, context) {
+    if (!raw) return 'Something went wrong. Please try again.';
+    const msg = String(raw);
+
+    // Specific error patterns (checked in priority order)
+    const patterns = [
+      // Bot token
+      [/invalid bot token \(Telegram rejected it\)/i,
+        "Telegram rejected that bot token. Double-check you copied the whole token from @BotFather (starts with numbers, then a colon)."],
+      [/looks like a Telegram bot token|bot_token.*regex|bot_token.*invalid/i,
+        "That doesn't look like a bot token. It should be numbers, then a colon, then a long string — e.g. 123456789:AAH..."],
+      [/could not validate bot token/i,
+        "Couldn't reach Telegram to check your bot token. Try again in a moment."],
+
+      // Wallet
+      [/address.*regex|invalid.*address|address.*invalid/i,
+        "That doesn't look like a valid wallet address. It should start with 0x and be 42 characters long."],
+      [/signature does not match address/i,
+        "The signature doesn't match this wallet address. Make sure you signed the message with the same wallet."],
+      [/message must include your merchant id/i,
+        "The signed message was modified. Sign the exact message shown above — don't edit it."],
+      [/could not verify signature/i,
+        "Couldn't verify that signature. Try signing the message again."],
+
+      // Auth
+      [/email.*invalid|invalid.*email/i, "Please enter a valid email address."],
+      [/password.*(min|short|too short)/i, "Password must be at least 8 characters."],
+      [/email.*(exists|taken|unique)/i, "An account with this email already exists. Try logging in instead."],
+      [/invalid credentials|wrong password|password.*(incorrect|mismatch)/i, "Email or password is incorrect."],
+      [/session expired/i, "Your session expired. Please log in again."],
+
+      // Generic HTTP-ish
+      [/network|fetch failed|failed to fetch/i, "Couldn't reach the server. Check your internet connection and try again."],
+      [/— 5\d\d/, "Something went wrong on our end. Please try again in a moment."],
+      [/— 40[13]/, "You're not authorised for that action. Try logging in again."],
+      [/— 404/, "That resource couldn't be found."],
+      [/onboarding incomplete/i, "Please connect your bot and wallet before going live."],
+    ];
+
+    for (const [rx, friendly] of patterns) {
+      if (rx.test(msg)) return friendly;
+    }
+
+    // Zod flatten shape: {formErrors:[], fieldErrors:{...}} — pull first message
+    try {
+      // The API helper throws Error(msg) where msg may be a JSON string for complex errors.
+      // In practice the server returns strings, but in case:
+      if (msg.startsWith('{')) {
+        const parsed = JSON.parse(msg);
+        if (parsed.fieldErrors) {
+          const first = Object.values(parsed.fieldErrors).flat()[0];
+          if (first) return String(first);
+        }
+      }
+    } catch {}
+
+    // Fall back to the raw message if it looks human; otherwise generic
+    if (/^[a-z0-9 .,:'"?!()-]+$/i.test(msg) && msg.length < 120) return msg;
+    return 'Something went wrong. Please try again.';
+  }
+
+  // Inline field error helpers — shown under the field, cleared on next input.
+  function setFieldError(inputId, msg) {
+    const input = document.getElementById(inputId);
+    if (!input) return;
+    input.classList.add('field-error');
+    let err = input.parentElement.querySelector('.field-error-msg');
+    if (!err) {
+      err = document.createElement('div');
+      err.className = 'field-error-msg';
+      input.insertAdjacentElement('afterend', err);
+    }
+    err.textContent = msg;
+    // Clear on next keystroke
+    input.addEventListener('input', () => clearFieldError(inputId), { once: true });
+  }
+  function clearFieldError(inputId) {
+    const input = document.getElementById(inputId);
+    if (!input) return;
+    input.classList.remove('field-error');
+    const err = input.parentElement.querySelector('.field-error-msg');
+    if (err) err.remove();
+  }
 
   // ---------------------------------------------------------------------
   // Onboarding (logged-in, pre-active)
@@ -448,14 +548,29 @@
     if (form && !me.bot_username) {
       form.addEventListener('submit', async (e) => {
         e.preventDefault();
+        clearFieldError('botToken');
+        const token = val('botToken');
+        if (!token) {
+          return setFieldError('botToken', 'Paste the token you got from @BotFather.');
+        }
+        if (!/^\d+:[\w-]{30,}$/.test(token)) {
+          return setFieldError('botToken',
+            "That doesn't look right. Token format is numbers, then a colon, then a long string — e.g. 123456789:AAH...");
+        }
         const btn = e.target.querySelector('button[type="submit"]');
         btn.disabled = true;
+        const prevLabel = btn.textContent;
+        btn.textContent = 'Connecting…';
         try {
-          const r = await API('POST', '/onboarding/bot', { bot_token: val('botToken') });
+          const r = await API('POST', '/onboarding/bot', { bot_token: token });
           Toast.ok(`Bot @${r.username} connected`);
           refreshMe();
-        } catch (err) { Toast.err(err.message); }
-        finally { btn.disabled = false; }
+        } catch (err) {
+          setFieldError('botToken', translateError(err.message, 'bot'));
+        } finally {
+          btn.disabled = false;
+          btn.textContent = prevLabel;
+        }
       });
     }
     const dc = document.getElementById('botDisconnect');
@@ -466,7 +581,7 @@
           await API('POST', '/bot/disconnect');
           Toast.ok('Bot disconnected');
           refreshMe();
-        } catch (err) { Toast.err(err.message); }
+        } catch (err) { Toast.err(translateError(err.message)); }
       });
     }
   }
@@ -515,10 +630,29 @@
     if (!form) return;
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
-      const btn = e.target.querySelector('button');
-      btn.disabled = true;
+      clearFieldError('walletAddress');
+      clearFieldError('walletSignature');
+      const address = val('walletAddress');
       const sig = val('walletSignature');
-      const body = { address: val('walletAddress') };
+
+      if (!address) {
+        return setFieldError('walletAddress', 'Paste your Polygon wallet address.');
+      }
+      if (!/^0x[a-fA-F0-9]{40}$/.test(address)) {
+        return setFieldError('walletAddress',
+          "That doesn't look right. Address should start with 0x and be 42 characters long.");
+      }
+      if (sig && !/^0x[a-fA-F0-9]+$/.test(sig)) {
+        return setFieldError('walletSignature',
+          'Signature should start with 0x and contain only hex characters.');
+      }
+
+      const btn = e.target.querySelector('button');
+      const prevLabel = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = 'Saving…';
+
+      const body = { address };
       if (sig) {
         body.signature = sig;
         body.message = document.getElementById('walletMessageBox').textContent;
@@ -528,8 +662,18 @@
         Toast.ok(r.verified ? 'Wallet verified' : 'Wallet saved (unverified)');
         document.getElementById('walletSignature').value = '';
         refreshMe();
-      } catch (err) { Toast.err(err.message); }
-      finally { btn.disabled = false; }
+      } catch (err) {
+        // Route the error to the relevant field
+        const friendly = translateError(err.message, 'wallet');
+        if (/signature|message/i.test(friendly)) {
+          setFieldError('walletSignature', friendly);
+        } else {
+          setFieldError('walletAddress', friendly);
+        }
+      } finally {
+        btn.disabled = false;
+        btn.textContent = prevLabel;
+      }
     });
   }
 

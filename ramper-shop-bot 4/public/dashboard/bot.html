@@ -5,31 +5,404 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Bot — Infinity Ramper Shops</title>
 <link rel="stylesheet" href="/assets/branding.css">
+<style>
+  .bot-layout {
+    display: grid;
+    grid-template-columns: 1fr 380px;
+    gap: 24px;
+    align-items: start;
+  }
+  @media (max-width: 960px) { .bot-layout { grid-template-columns: 1fr; } }
+
+  .form-row { display: flex; flex-direction: column; gap: 6px; margin-bottom: 20px; }
+  .form-row label {
+    font-family: 'Funnel Display', sans-serif;
+    font-weight: 500;
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+  }
+  .form-row .counter {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: var(--ink-faint);
+    text-transform: none;
+    letter-spacing: 0;
+  }
+  .form-row .counter.over { color: var(--danger, #b0413e); }
+  .form-row textarea {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--ink);
+    font-family: 'Inter', sans-serif;
+    font-size: 14px;
+    padding: 10px 12px;
+    border-radius: 6px;
+    outline: none;
+    transition: border-color 120ms ease;
+    width: 100%;
+    resize: vertical;
+    min-height: 90px;
+    line-height: 1.5;
+  }
+  .form-row textarea:focus { border-color: var(--accent); }
+  .form-row .hint { color: var(--ink-faint); font-size: 12px; line-height: 1.5; }
+  .form-row .hint em { font-style: italic; color: var(--ink-mid); }
+
+  .card-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 4px;
+  }
+
+  /* ---- Preview panel — meant to evoke Telegram ---- */
+  .preview-panel {
+    position: sticky;
+    top: 24px;
+    background: #17212b;
+    border-radius: 10px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+  }
+  .preview-head {
+    background: #242f3d;
+    padding: 14px 18px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+  }
+  .preview-avatar {
+    width: 36px; height: 36px;
+    border-radius: 50%;
+    background: var(--accent);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #0a0a0a;
+    font-family: 'Funnel Display', sans-serif;
+    font-weight: 600;
+    font-size: 14px;
+    flex-shrink: 0;
+  }
+  .preview-head .name {
+    font-family: 'Inter', sans-serif;
+    font-weight: 600;
+    font-size: 14px;
+    color: #e6eef5;
+    line-height: 1.3;
+  }
+  .preview-head .sub {
+    font-size: 12px;
+    color: #7f91a3;
+    line-height: 1.3;
+  }
+  .preview-body {
+    padding: 20px 16px;
+    min-height: 300px;
+    max-height: 600px;
+    overflow-y: auto;
+    background-image:
+      radial-gradient(circle at 50% 20%, rgba(255,172,28,0.04) 0%, transparent 50%),
+      linear-gradient(180deg, #17212b 0%, #0e1621 100%);
+  }
+  .preview-label {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: #5a7284;
+    margin-bottom: 6px;
+    padding-left: 4px;
+  }
+  .preview-bubble {
+    background: #182533;
+    color: #e6eef5;
+    padding: 10px 14px;
+    border-radius: 10px 10px 10px 4px;
+    font-family: 'Inter', sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+    max-width: 100%;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    margin-bottom: 20px;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.2);
+  }
+  .preview-bubble:last-child { margin-bottom: 0; }
+  .preview-bubble .telegram-buttons {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px;
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid rgba(255,255,255,0.08);
+  }
+  .preview-bubble .tg-btn {
+    background: rgba(100,148,180,0.15);
+    color: #6ab7ff;
+    border: none;
+    padding: 8px;
+    border-radius: 4px;
+    font-size: 13px;
+    text-align: center;
+    font-family: 'Inter', sans-serif;
+  }
+  .preview-bubble .tg-btn.wide { grid-column: 1 / -1; }
+  .preview-muted { color: #7f91a3; }
+  .preview-divider {
+    color: #5a7284;
+    font-size: 12px;
+    margin: 6px 0;
+  }
+</style>
 </head>
 <body>
 <div id="page"></div>
 <script src="/assets/shell.js"></script>
 <script>
-if (Auth.require()) {
+(async () => {
+  'use strict';
+  if (!Auth.require()) return;
+
   const main = Shell.render({
     crumbs: [{ label: 'Dashboard', href: '/dashboard' }, { label: 'Bot' }],
   });
+
   main.innerHTML = `
     <div class="page-head">
       <div>
         <span class="eyebrow">Admin</span>
-        <h1 class="display mt-2">Bot</h1>
-        <div class="meta">Coming next.</div>
+        <h1 class="display mt-2">Bot copy</h1>
+        <div class="meta" id="bot-meta">Loading…</div>
       </div>
     </div>
-    <div class="card">
-      <div class="empty">
-        <div class="display">Bot — coming next.</div>
-        <em>This area is in the plan. Reach out once you want it prioritised.</em>
+
+    <div class="bot-layout">
+      <div class="card" style="padding: 24px 28px;">
+        <div id="bot-form">
+          <div class="empty"><em>Loading…</em></div>
+        </div>
+      </div>
+
+      <div class="preview-panel" id="preview-panel">
+        <div class="preview-head">
+          <div class="preview-avatar" id="pv-avatar">—</div>
+          <div>
+            <div class="name" id="pv-name">—</div>
+            <div class="sub">bot</div>
+          </div>
+        </div>
+        <div class="preview-body" id="pv-body">
+          <div class="preview-bubble muted">Loading…</div>
+        </div>
       </div>
     </div>
   `;
-}
+
+  const MAX = {
+    welcome_message: 300,
+    description: 500,
+    order_received_message: 500,
+  };
+
+  const DEFAULTS = {
+    welcome_greeting: (name, store) => `Welcome to ${store}, ${name}.`,
+    welcome_fallback: 'Tap a button to browse.',
+    order_fallback: "You'll get a shipping notification when your order is on its way.",
+  };
+
+  let me = null;
+  let pendingSave = null;
+
+  function escapeHtml(s) {
+    return String(s ?? '')
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;')
+      .replaceAll("'", '&#039;');
+  }
+
+  async function loadMe() {
+    try {
+      me = await API('GET', '/me');
+      document.getElementById('bot-meta').textContent =
+        me.bot_username ? `@${me.bot_username}` : 'Bot not connected yet';
+      if (!me.bot_username) {
+        document.getElementById('bot-form').innerHTML = `
+          <div class="empty">
+            <div class="display">Connect your bot first.</div>
+            <em>Head to <a href="/dashboard/settings" style="color:var(--accent)">Settings</a> and paste a bot token from @BotFather, then come back here to customise what it says.</em>
+          </div>
+        `;
+        document.getElementById('pv-body').innerHTML = `
+          <div class="preview-bubble preview-muted">No bot connected.</div>
+        `;
+        return;
+      }
+      renderForm();
+      renderPreview();
+    } catch (err) {
+      console.error('Failed to load merchant:', err);
+      document.getElementById('bot-meta').textContent = 'Error loading';
+      document.getElementById('bot-form').innerHTML = `
+        <div class="empty"><em>Couldn't load your bot settings. Refresh and try again.</em></div>
+      `;
+    }
+  }
+
+  function renderForm() {
+    const wm = me.welcome_message || '';
+    const ds = me.description || '';
+    const om = me.order_received_message || '';
+
+    document.getElementById('bot-form').innerHTML = `
+      <div class="form-row">
+        <label for="f-welcome">
+          <span>Welcome message</span>
+          <span class="counter" id="c-welcome">${wm.length} / ${MAX.welcome_message}</span>
+        </label>
+        <textarea id="f-welcome" maxlength="${MAX.welcome_message}" placeholder="Tap a button to browse.">${escapeHtml(wm)}</textarea>
+        <div class="hint">
+          Shown after the greeting when someone taps <em>/start</em>. Keep it warm and short — one or two sentences.
+          Leave blank to use the default: <em>"Tap a button to browse."</em>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <label for="f-description">
+          <span>About your store</span>
+          <span class="counter" id="c-description">${ds.length} / ${MAX.description}</span>
+        </label>
+        <textarea id="f-description" maxlength="${MAX.description}" placeholder="Small-batch coffee from single-origin farms. UK shipping within 48 hours.">${escapeHtml(ds)}</textarea>
+        <div class="hint">
+          Shown on the Help screen — your chance to say what makes your shop worth buying from.
+          Leave blank to show a generic help message instead.
+        </div>
+      </div>
+
+      <div class="form-row">
+        <label for="f-order">
+          <span>Order confirmation closer</span>
+          <span class="counter" id="c-order">${om.length} / ${MAX.order_received_message}</span>
+        </label>
+        <textarea id="f-order" maxlength="${MAX.order_received_message}" placeholder="Thanks for your order! We'll pack it up and ship it out in the next 48 hours.">${escapeHtml(om)}</textarea>
+        <div class="hint">
+          Appended to the automatic "Payment received" message the bot sends the buyer.
+          Leave blank to use the default: <em>"You'll get a shipping notification when your order is on its way."</em>
+        </div>
+      </div>
+
+      <div class="card-actions">
+        <button class="btn btn-ghost btn-sm" id="reset-btn">Discard changes</button>
+        <button class="btn btn-primary btn-sm" id="save-btn">Save bot copy</button>
+      </div>
+    `;
+
+    const wire = (inputId, counterId, maxLen) => {
+      const input = document.getElementById(inputId);
+      const counter = document.getElementById(counterId);
+      input.addEventListener('input', () => {
+        const n = input.value.length;
+        counter.textContent = `${n} / ${maxLen}`;
+        counter.classList.toggle('over', n > maxLen);
+        renderPreview();
+      });
+    };
+    wire('f-welcome', 'c-welcome', MAX.welcome_message);
+    wire('f-description', 'c-description', MAX.description);
+    wire('f-order', 'c-order', MAX.order_received_message);
+
+    document.getElementById('save-btn').addEventListener('click', save);
+    document.getElementById('reset-btn').addEventListener('click', () => {
+      renderForm();
+      renderPreview();
+    });
+  }
+
+  function currentValues() {
+    return {
+      welcome_message: document.getElementById('f-welcome')?.value || '',
+      description: document.getElementById('f-description')?.value || '',
+      order_received_message: document.getElementById('f-order')?.value || '',
+    };
+  }
+
+  function renderPreview() {
+    if (!me) return;
+    const storeName = me.store_name || 'your store';
+    const initials = storeName
+      .split(/\s+/)
+      .slice(0, 2)
+      .map(w => w[0]?.toUpperCase() || '')
+      .join('');
+    document.getElementById('pv-avatar').textContent = initials || 'S';
+    document.getElementById('pv-name').textContent = storeName;
+
+    const v = currentValues();
+    const welcomeBody = v.welcome_message.trim() || DEFAULTS.welcome_fallback;
+    const descBody = v.description.trim();
+    const orderBody = v.order_received_message.trim() || DEFAULTS.order_fallback;
+
+    const greeting = DEFAULTS.welcome_greeting('Sam', storeName);
+
+    // Preview: show the three bot surfaces stacked
+    document.getElementById('pv-body').innerHTML = `
+      <div class="preview-label">On /start</div>
+      <div class="preview-bubble">${escapeHtml(greeting)}\n\n${escapeHtml(welcomeBody)}
+        <div class="telegram-buttons">
+          <div class="tg-btn">Shop</div>
+          <div class="tg-btn">Cart</div>
+          <div class="tg-btn wide">Help</div>
+        </div>
+      </div>
+
+      <div class="preview-label">On Help</div>
+      <div class="preview-bubble">${
+        descBody
+          ? `<strong>About ${escapeHtml(storeName)}</strong>\n\n${escapeHtml(descBody)}\n\n<span class="preview-divider">— — —</span>\n\nHow it works\n\n• Browse products and add them to your cart\n• Checkout via Infinity Ramper\n• You'll get a confirmation here once payment lands`
+          : `<strong>Help</strong>\n\n• Browse products and add them to your cart\n• Checkout via Infinity Ramper\n• You'll get a confirmation here once payment lands`
+      }</div>
+
+      <div class="preview-label">On order paid</div>
+      <div class="preview-bubble">Payment received for order #4829\n\nAmount: ${escapeHtml(me.currency_code || 'USD')} 42.00\n\n${escapeHtml(orderBody)}</div>
+    `;
+  }
+
+  async function save() {
+    const v = currentValues();
+
+    // Send null for empty strings so DB clears back to default
+    const payload = {
+      welcome_message: v.welcome_message.trim() || null,
+      description: v.description.trim() || null,
+      order_received_message: v.order_received_message.trim() || null,
+    };
+
+    const saveBtn = document.getElementById('save-btn');
+    saveBtn.disabled = true;
+    saveBtn.textContent = 'Saving…';
+
+    try {
+      me = await API('PATCH', '/bot-copy', payload);
+      Toast.ok('Bot copy saved. Try /start in your bot to see it.');
+      renderForm();
+      renderPreview();
+    } catch (err) {
+      Toast.err(err.message || 'Save failed.');
+      saveBtn.disabled = false;
+      saveBtn.textContent = 'Save bot copy';
+    }
+  }
+
+  await loadMe();
+})();
 </script>
 </body>
 </html>

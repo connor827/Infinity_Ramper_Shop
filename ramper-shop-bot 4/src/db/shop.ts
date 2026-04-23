@@ -593,6 +593,8 @@ export interface MerchantMetrics {
   orders_month: number;
   orders_awaiting_fulfilment: number;
   total_buyers: number;
+  total_products: number;
+  total_orders_all_time: number;
   low_stock_products: number;
   // Last 30 days, one point per day — for chart
   revenue_series: Array<{ date: string; revenue: string; orders: number }>;
@@ -632,6 +634,18 @@ export async function getMerchantMetrics(merchantId: string): Promise<MerchantMe
     [merchantId]
   );
 
+  const { rows: productCountRows } = await query<{ count: string }>(
+    `SELECT COUNT(*)::text AS count
+       FROM products WHERE merchant_id = $1 AND status != 'inactive'`,
+    [merchantId]
+  );
+
+  const { rows: allOrdersRows } = await query<{ count: string }>(
+    `SELECT COUNT(*)::text AS count
+       FROM orders WHERE merchant_id = $1`,
+    [merchantId]
+  );
+
   const { rows: series } = await query<{
     date: string;
     revenue: string;
@@ -665,6 +679,8 @@ export async function getMerchantMetrics(merchantId: string): Promise<MerchantMe
     orders_month: Number(a.orders_month),
     orders_awaiting_fulfilment: Number(a.orders_awaiting_fulfilment),
     total_buyers: Number(buyerCountRows[0]?.count ?? 0),
+    total_products: Number(productCountRows[0]?.count ?? 0),
+    total_orders_all_time: Number(allOrdersRows[0]?.count ?? 0),
     low_stock_products: Number(lowStockRows[0]?.count ?? 0),
     revenue_series: series.map((r) => ({
       date: r.date,

@@ -29,12 +29,14 @@ export async function notifyBuyerOfPayment(orderId: string): Promise<void> {
   const bot = getBotForMerchant(merchant);
 
   try {
-    await bot.api.sendMessage(
-      row.telegram_id,
+    const customMessage = merchant.order_received_message?.trim();
+    const base =
       `Payment received for order #${row.order_number}\n\n` +
-        `Amount: ${row.currency_code} ${Number(row.total).toFixed(2)}\n\n` +
-        `You'll get a shipping notification when your order is on its way.`
-    );
+      `Amount: ${row.currency_code} ${Number(row.total).toFixed(2)}\n\n`;
+    const closing = customMessage && customMessage.length > 0
+      ? customMessage
+      : `You'll get a shipping notification when your order is on its way.`;
+    await bot.api.sendMessage(row.telegram_id, base + closing);
   } catch (err) {
     logger.error({ err, orderId }, 'failed to notify buyer');
   }

@@ -32,10 +32,12 @@ export function registerHandlers(bot: Bot<BotContext>): void {
   // ----- /start -----------------------------------------------------------
   bot.command('start', async (ctx) => {
     const name = ctx.from?.first_name ?? 'there';
-    await ctx.reply(
-      `Welcome to ${ctx.merchant.store_name}, ${name}.\n\nTap a button to browse.`,
-      { reply_markup: mainMenu() }
-    );
+    const custom = ctx.merchant.welcome_message?.trim();
+    const greeting = `Welcome to ${ctx.merchant.store_name}, ${name}.`;
+    const body = custom && custom.length > 0
+      ? `${greeting}\n\n${custom}`
+      : `${greeting}\n\nTap a button to browse.`;
+    await ctx.reply(body, { reply_markup: mainMenu() });
   });
 
   // ----- Main menu --------------------------------------------------------
@@ -51,14 +53,15 @@ export function registerHandlers(bot: Bot<BotContext>): void {
 
   bot.callbackQuery('menu:help', async (ctx) => {
     await safeAnswer(ctx);
-    await safeEdit(
-      ctx,
-      `Help\n\n` +
-        `\u2022 Browse products and add them to your cart\n` +
-        `\u2022 Checkout via Infinity Ramper - pay with card, Apple Pay, Google Pay, bank transfer, or crypto\n` +
-        `\u2022 You'll get a confirmation here once payment lands`,
-      new InlineKeyboard().text('back', 'menu:home')
-    );
+    const description = ctx.merchant.description?.trim();
+    const helpBody =
+      `\u2022 Browse products and add them to your cart\n` +
+      `\u2022 Checkout via Infinity Ramper - pay with card, Apple Pay, Google Pay, bank transfer, or crypto\n` +
+      `\u2022 You'll get a confirmation here once payment lands`;
+    const text = description && description.length > 0
+      ? `About ${ctx.merchant.store_name}\n\n${description}\n\n---\n\nHow it works\n\n${helpBody}`
+      : `Help\n\n${helpBody}`;
+    await safeEdit(ctx, text, new InlineKeyboard().text('back', 'menu:home'));
   });
 
   bot.callbackQuery('menu:home', async (ctx) => {

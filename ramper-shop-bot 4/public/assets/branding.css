@@ -520,6 +520,20 @@ input::placeholder, textarea::placeholder { color: var(--ink-faint); }
 .banner-error { border-color: var(--danger); color: var(--danger); }
 .banner-ok    { border-color: var(--green); color: var(--green); }
 
+/* Inline field validation — sits under the input, cleared on next keystroke */
+.field-error {
+  border-color: var(--danger) !important;
+}
+.field-error:focus {
+  border-color: var(--danger) !important;
+}
+.field-error-msg {
+  color: var(--danger);
+  font-size: 12px;
+  margin-top: 6px;
+  font-family: 'Inter', sans-serif;
+}
+
 #toast-root {
   position: fixed;
   bottom: 24px; right: 24px;

@@ -74,6 +74,84 @@
 
   const currency = me?.currency_code || 'USD';
 
+  // --- First-run experience -------------------------------------------
+  // A new merchant with no orders and no products sees a guided "what's next"
+  // block above the metrics, so $0 tiles don't read as failure.
+  const isFirstRun =
+    metrics.total_orders_all_time === 0 &&
+    metrics.total_products === 0;
+
+  if (isFirstRun) {
+    const checks = [
+      {
+        label: 'Connect your bot',
+        done: Boolean(me?.bot_username),
+        href: '/dashboard/settings',
+        cta: me?.bot_username ? null : 'Set it up →',
+        detail: me?.bot_username ? `@${me.bot_username}` : 'Paste a token from @BotFather.',
+      },
+      {
+        label: 'Connect your wallet',
+        done: Boolean(me?.payout_wallet),
+        href: '/dashboard/settings',
+        cta: me?.payout_wallet ? null : 'Set it up →',
+        detail: me?.payout_wallet ? `${me.payout_wallet.slice(0, 8)}…${me.payout_wallet.slice(-6)}` : 'Polygon USDC address.',
+      },
+      {
+        label: 'Add your first product',
+        done: false,
+        href: '/dashboard/products',
+        cta: 'Add product →',
+        detail: 'Name, price, image. Takes a minute.',
+      },
+      {
+        label: 'Share your bot link',
+        done: false,
+        href: me?.bot_username ? `https://t.me/${me.bot_username}` : null,
+        external: Boolean(me?.bot_username),
+        cta: me?.bot_username ? 'Open bot →' : null,
+        detail: me?.bot_username ? `t.me/${me.bot_username}` : 'Available once your bot is connected.',
+      },
+    ];
+
+    const doneCount = checks.filter(c => c.done).length;
+
+    const firstRun = `
+      <div class="card mb-4" style="border-left: 3px solid var(--accent);">
+        <div class="card-head" style="padding-bottom: 16px">
+          <div>
+            <span class="eyebrow plain">Getting started</span>
+            <h2 class="display mt-1">Your shop, <em style="font-style:italic;font-weight:300;color:var(--accent)">ready when you are.</em></h2>
+            <div class="muted" style="font-size:13px;margin-top:6px">
+              ${doneCount === 0
+                ? 'Four quick steps and your first buyer can check out.'
+                : doneCount === checks.length
+                  ? 'Setup complete. Your first order will appear here when a buyer checks out.'
+                  : `${doneCount} of ${checks.length} done · ${checks.length - doneCount} to go.`}
+            </div>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr;gap:1px;background:var(--border);border-top:1px solid var(--border)">
+          ${checks.map((c, i) => `
+            <div style="background:var(--bg);padding:16px 24px;display:flex;align-items:center;gap:16px">
+              <div style="width:22px;height:22px;border-radius:50%;border:1.5px solid ${c.done ? 'var(--green,#3a7a52)' : 'var(--border)'};display:flex;align-items:center;justify-content:center;flex-shrink:0;background:${c.done ? 'var(--green,#3a7a52)' : 'transparent'}">
+                ${c.done ? `<svg width="10" height="10" viewBox="0 0 10 10"><path d="M2 5 L4 7 L8 3" stroke="var(--bg)" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>` : `<span style="color:var(--ink-faint);font-family:'IBM Plex Mono',monospace;font-size:11px">${i + 1}</span>`}
+              </div>
+              <div style="flex:1;min-width:0">
+                <div style="font-weight:500;color:${c.done ? 'var(--ink-mid)' : 'var(--ink)'};${c.done ? 'text-decoration:line-through;text-decoration-color:var(--ink-faint)' : ''}">${c.label}</div>
+                <div class="mono" style="font-size:12px;color:var(--ink-faint);margin-top:2px">${Fmt.escape(c.detail)}</div>
+              </div>
+              ${c.cta && c.href ? `<a class="btn btn-secondary btn-sm" href="${c.href}" ${c.external ? 'target="_blank" rel="noopener"' : ''}>${Fmt.escape(c.cta)}</a>` : ''}
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `;
+
+    // Prepend before the metrics block
+    document.getElementById('metrics-wrap').insertAdjacentHTML('beforebegin', firstRun);
+  }
+
   // --- Metrics tiles ---------------------------------------------------
   const tiles = [
     { label: 'Revenue today',  money: metrics.revenue_today,  sub: `${metrics.orders_today} ${metrics.orders_today === 1 ? 'order' : 'orders'}` },

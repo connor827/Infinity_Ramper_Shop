@@ -13,6 +13,10 @@ export interface Merchant {
   currency_display: string;  // legacy free-text display (kept for back-compat)
   status: 'pending' | 'active' | 'suspended' | 'terminated';
   onboarding_step: 'signup' | 'bot' | 'wallet' | 'store' | 'products' | 'live';
+  // Bot customisation (migration 004) — all nullable, fall back to defaults.
+  welcome_message: string | null;
+  description: string | null;
+  order_received_message: string | null;
   created_at: Date;
   updated_at: Date;
 }
