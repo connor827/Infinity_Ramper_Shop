@@ -270,8 +270,8 @@
         </label>
         <textarea id="f-welcome" maxlength="${MAX.welcome_message}" placeholder="Tap a button to browse.">${escapeHtml(wm)}</textarea>
         <div class="hint">
-          Shown after the greeting when someone taps <em>/start</em>. Keep it warm and short — one or two sentences.
-          Leave blank to use the default: <em>"Tap a button to browse."</em>
+          Shown after the greeting when someone taps <em>/start</em>. The greeting — <em>"Welcome to ${escapeHtml(me.store_name)}, [name]."</em> — is automatic and uses the buyer's real Telegram first name.
+          Keep your message warm and short. Leave blank to use the default: <em>"Tap a button to browse."</em>
         </div>
       </div>
 
@@ -350,12 +350,12 @@
     const descBody = v.description.trim();
     const orderBody = v.order_received_message.trim() || DEFAULTS.order_fallback;
 
-    const greeting = DEFAULTS.welcome_greeting('Sam', storeName);
+    const greeting = DEFAULTS.welcome_greeting("[buyer's first name]", storeName);
 
     // Preview: show the three bot surfaces stacked
     document.getElementById('pv-body').innerHTML = `
       <div class="preview-label">On /start</div>
-      <div class="preview-bubble">${escapeHtml(greeting)}\n\n${escapeHtml(welcomeBody)}
+      <div class="preview-bubble">Welcome to ${escapeHtml(storeName)}, <span style="color:var(--accent);font-family:'IBM Plex Mono',monospace;font-size:12px;background:rgba(255,172,28,0.1);padding:1px 6px;border-radius:3px">buyer's name</span>.\n\n${escapeHtml(welcomeBody)}
         <div class="telegram-buttons">
           <div class="tg-btn">Shop</div>
           <div class="tg-btn">Cart</div>

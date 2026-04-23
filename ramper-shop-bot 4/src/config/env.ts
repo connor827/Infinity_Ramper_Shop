@@ -24,6 +24,12 @@ const envSchema = z.object({
   // Common guesses: "affiliate", "affiliate_address", "partner", "ref".
   // Override if Ramper confirms a different name.
   PLATFORM_AFFILIATE_PARAM: z.string().default('affiliate'),
+
+  // Platform admin — optional. When both are set, /admin login works.
+  // ADMIN_PASSWORD_HASH is a bcrypt hash of the password (NOT the password itself).
+  // Generate with: node -e "console.log(require('bcryptjs').hashSync('your-password', 12))"
+  ADMIN_EMAIL: z.string().email().optional(),
+  ADMIN_PASSWORD_HASH: z.string().optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);

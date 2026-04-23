@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Admin Activity — Infinity Ramper Shops</title>
+<link rel="stylesheet" href="/assets/branding.css">
+<style>
+  .feed {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .feed-item {
+    display: grid;
+    grid-template-columns: 40px 1fr auto;
+    gap: 16px;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+    align-items: center;
+  }
+  .feed-item:last-child { border-bottom: none; }
+  .feed-icon {
+    width: 32px; height: 32px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    color: var(--bg);
+    font-weight: 600;
+  }
+  .feed-icon.signup { background: var(--accent); }
+  .feed-icon.order { background: var(--green, #3a7a52); }
+  .feed-title {
+    font-size: 14px;
+    color: var(--ink);
+    margin-bottom: 2px;
+  }
+  .feed-title strong { font-weight: 500; }
+  .feed-detail {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    color: var(--ink-faint);
+  }
+  .feed-time {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    color: var(--ink-faint);
+    white-space: nowrap;
+  }
+</style>
+</head>
+<body>
+<script src="/assets/admin-shell.js"></script>
+<script>
+(async () => {
+  'use strict';
+  if (!AdminAuth.require()) return;
+
+  const main = AdminShell.render({
+    crumbs: [{ label: 'Activity' }],
+    active: 'activity',
+  });
+
+  main.innerHTML = `
+    <h1 class="display mt-2" style="margin-bottom:6px">Activity</h1>
+    <div class="meta" style="margin-bottom:24px;color:var(--ink-mid);font-size:13px">Recent signups and orders across the platform.</div>
+    <div id="feed"><div class="empty"><em>Loading activity…</em></div></div>
+  `;
+
+  try {
+    const items = await AdminAPI('GET', '/activity');
+    render(items);
+  } catch (err) {
+    document.getElementById('feed').innerHTML =
+      `<div class="empty"><em>Couldn't load: ${Fmt.escape(err.message)}</em></div>`;
+  }
+
+  function render(items) {
+    if (items.length === 0) {
+      document.getElementById('feed').innerHTML =
+        `<div class="empty"><em>No activity yet. Platform is quiet.</em></div>`;
+      return;
+    }
+
+    const rows = items.map(item => {
+      const iconText = item.kind === 'signup' ? '+' : '$';
+      const iconClass = item.kind === 'signup' ? 'signup' : 'order';
+      const title = item.kind === 'signup'
+        ? `<strong>${Fmt.escape(item.merchant_name)}</strong> signed up`
+        : `<strong>${Fmt.escape(item.merchant_name)}</strong> got a new order`;
+      return `
+        <div class="feed-item">
+          <div class="feed-icon ${iconClass}">${iconText}</div>
+          <div>
+            <div class="feed-title">${title}</div>
+            <div class="feed-detail">${Fmt.escape(item.detail)}</div>
+          </div>
+          <div class="feed-time">${Fmt.relative(item.created_at)}</div>
+        </div>
+      `;
+    }).join('');
+
+    document.getElementById('feed').innerHTML = `<div class="feed">${rows}</div>`;
+  }
+})();
+</script>
+</body>
+</html>

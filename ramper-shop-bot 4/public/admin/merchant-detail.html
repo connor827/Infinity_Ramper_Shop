@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Merchant — Infinity Ramper Admin</title>
+<link rel="stylesheet" href="/assets/branding.css">
+<style>
+  .detail-layout {
+    display: grid;
+    grid-template-columns: 1fr 320px;
+    gap: 24px;
+    align-items: start;
+  }
+  @media (max-width: 960px) { .detail-layout { grid-template-columns: 1fr; } }
+
+  .info-stack {
+    display: flex; flex-direction: column; gap: 1px;
+    background: var(--border);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .info-card { background: var(--bg); padding: 22px 24px; }
+  .info-card h3 {
+    font-family: 'Funnel Display', serif;
+    font-weight: 500;
+    font-size: 16px;
+    letter-spacing: -0.01em;
+    margin: 0 0 14px;
+    color: var(--ink);
+  }
+
+  .kv { display: grid; grid-template-columns: 140px 1fr; gap: 10px 16px; font-size: 13px; }
+  .kv .k { color: var(--ink-faint); font-family: 'Funnel Display', sans-serif; font-weight: 500; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; align-self: center; }
+  .kv .v { color: var(--ink); word-break: break-word; }
+  .kv .v.mono { font-family: 'IBM Plex Mono', monospace; font-size: 12px; }
+  .kv .v .muted { color: var(--ink-faint); }
+
+  .stat-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1px;
+    background: var(--border);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+    margin-bottom: 24px;
+  }
+  @media (max-width: 600px) { .stat-grid { grid-template-columns: 1fr; } }
+  .stat-cell { background: var(--bg); padding: 18px 20px; }
+  .stat-cell .num {
+    font-family: 'Funnel Display', serif; font-weight: 500;
+    font-size: 26px; letter-spacing: -0.022em; color: var(--ink);
+    line-height: 1; margin-bottom: 6px;
+  }
+  .stat-cell .lbl {
+    font-family: 'Funnel Display', sans-serif; font-weight: 500;
+    font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--ink-faint);
+  }
+
+  .status-pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 3px 12px; border: 1px solid var(--border);
+    border-radius: 100px;
+    font-family: 'Funnel Display', sans-serif; font-weight: 500;
+    font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--ink);
+  }
+  .status-pill::before {
+    content: ''; width: 6px; height: 6px; border-radius: 50%;
+    display: inline-block; background: var(--ink-faint);
+  }
+  .status-pill.active::before { background: var(--green, #3a7a52); }
+  .status-pill.active { color: var(--green, #3a7a52); border-color: var(--green, #3a7a52); }
+  .status-pill.suspended::before { background: var(--danger, #b0413e); }
+  .status-pill.suspended { color: var(--danger, #b0413e); border-color: var(--danger, #b0413e); }
+  .status-pill.pending::before { background: var(--accent); }
+  .status-pill.pending { color: var(--accent); border-color: var(--accent); }
+
+  .action-panel {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px 22px;
+  }
+  .action-panel h3 {
+    font-family: 'Funnel Display', serif;
+    font-weight: 500; font-size: 16px; margin: 0 0 12px;
+  }
+  .action-panel .btn-full { width: 100%; justify-content: center; padding: 10px; }
+  .action-panel .btn-danger {
+    background: transparent;
+    border: 1px solid var(--danger, #b0413e);
+    color: var(--danger, #b0413e);
+  }
+  .action-panel .btn-danger:hover:not(:disabled) {
+    background: rgba(176, 65, 62, 0.08);
+  }
+  .action-panel .btn-success {
+    background: transparent;
+    border: 1px solid var(--green, #3a7a52);
+    color: var(--green, #3a7a52);
+  }
+  .action-panel .btn-success:hover:not(:disabled) {
+    background: rgba(58, 122, 82, 0.08);
+  }
+  .action-panel .warning-note {
+    background: var(--bg-warm);
+    border-radius: 6px;
+    padding: 12px 14px;
+    font-size: 12px;
+    color: var(--ink-mid);
+    line-height: 1.5;
+    margin-top: 12px;
+  }
+
+  /* Confirm dialog */
+  .confirm-overlay {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.6);
+    display: none; align-items: center; justify-content: center;
+    z-index: 1000;
+    padding: 24px;
+  }
+  .confirm-overlay.show { display: flex; }
+  .confirm-box {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 28px 32px;
+    max-width: 440px;
+    width: 100%;
+  }
+  .confirm-box h3 {
+    font-family: 'Funnel Display', serif;
+    font-weight: 500; font-size: 20px;
+    margin: 0 0 10px; color: var(--ink);
+  }
+  .confirm-box p { color: var(--ink-mid); font-size: 14px; line-height: 1.5; margin: 0 0 20px; }
+  .confirm-box .row { display: flex; gap: 10px; justify-content: flex-end; }
+</style>
+</head>
+<body>
+<div id="page"></div>
+<script src="/admin/admin-shell.js"></script>
+<script>
+(async () => {
+  'use strict';
+  if (!AdminAuth.require()) return;
+
+  // Extract merchant ID from URL: /admin/merchants/:id
+  const pathParts = window.location.pathname.split('/');
+  const merchantId = pathParts[pathParts.length - 1];
+  if (!merchantId || !/^[a-f0-9-]{36}$/i.test(merchantId)) {
+    document.getElementById('page').innerHTML = `
+      <div class="dash-frame">
+        <main class="empty">
+          <div class="display">Invalid merchant ID.</div>
+          <em>The link may be broken. <a href="/admin/merchants" style="color:var(--accent)">Go back to merchants list</a>.</em>
+        </main>
+      </div>
+    `;
+    return;
+  }
+
+  const main = AdminShell.render({
+    crumbs: [
+      { label: 'Merchants', href: '/admin/merchants' },
+      { label: 'Detail' },
+    ],
+  });
+
+  main.innerHTML = `<div class="empty"><em>Loading merchant…</em></div>`;
+
+  let data;
+  try {
+    data = await AdminAPI('GET', '/merchants/' + encodeURIComponent(merchantId));
+  } catch (err) {
+    main.innerHTML = `
+      <div class="empty">
+        <div class="display">Couldn't load merchant.</div>
+        <em>${Fmt.escape(err.message || 'Something went wrong.')} — <a href="/admin/merchants" style="color:var(--accent)">Back to list</a></em>
+      </div>
+    `;
+    return;
+  }
+
+  const m = data.merchant;
+  const s = data.stats;
+  const orders = data.recent_orders || [];
+
+  // Update crumb now that we know the name
+  const crumbsEl = document.querySelector('.crumbs');
+  if (crumbsEl) {
+    crumbsEl.innerHTML = `
+      <a href="/admin/overview">Overview</a>
+      <span class="crumb-sep">/</span>
+      <a href="/admin/merchants">Merchants</a>
+      <span class="crumb-sep">/</span>
+      <span class="current">${Fmt.escape(m.store_name)}</span>
+    `;
+  }
+
+  render();
+
+  function render() {
+    const statusPillClass =
+      m.status === 'active' ? 'active' :
+      m.status === 'suspended' ? 'suspended' : 'pending';
+
+    main.innerHTML = `
+      <div class="page-head">
+        <div>
+          <span class="eyebrow">Merchant</span>
+          <h1 class="display mt-2">${Fmt.escape(m.store_name)}
+            <span class="status-pill ${statusPillClass}" style="margin-left:10px;vertical-align:middle">${Fmt.escape(m.status)}</span>
+          </h1>
+          <div class="meta">
+            Signed up ${Fmt.relative(m.created_at)} · ${Fmt.escape(m.email || 'no email')}
+          </div>
+        </div>
+      </div>
+
+      <div class="stat-grid">
+        <div class="stat-cell">
+          <div class="num">${Fmt.money(s.revenue_all_time, m.currency_code)}</div>
+          <div class="lbl">All-time revenue</div>
+        </div>
+        <div class="stat-cell">
+          <div class="num">${Fmt.money(s.revenue_30d, m.currency_code)}</div>
+          <div class="lbl">Last 30 days</div>
+        </div>
+        <div class="stat-cell">
+          <div class="num">${s.order_count}</div>
+          <div class="lbl">Total orders</div>
+        </div>
+      </div>
+
+      <div class="detail-layout">
+        <div class="info-stack">
+          <div class="info-card">
+            <h3>Store</h3>
+            <div class="kv">
+              <div class="k">Name</div><div class="v">${Fmt.escape(m.store_name)}</div>
+              <div class="k">Slug</div><div class="v mono">${Fmt.escape(m.store_slug)}</div>
+              <div class="k">Currency</div><div class="v">${Fmt.escape(m.currency_code)}</div>
+              <div class="k">Onboarding</div><div class="v">${Fmt.escape(m.onboarding_step)}</div>
+              <div class="k">Last updated</div><div class="v">${Fmt.relative(m.updated_at)}</div>
+            </div>
+          </div>
+
+          <div class="info-card">
+            <h3>Bot</h3>
+            <div class="kv">
+              <div class="k">Username</div>
+              <div class="v">
+                ${m.bot_username
+                  ? `<a href="https://t.me/${Fmt.escape(m.bot_username)}" target="_blank" rel="noopener" style="color:var(--accent)">@${Fmt.escape(m.bot_username)}</a>`
+                  : '<span class="muted">Not connected</span>'}
+              </div>
+              <div class="k">Bot ID</div>
+              <div class="v mono">${m.bot_id ? m.bot_id : '<span class="muted">—</span>'}</div>
+              <div class="k">Admin Telegram</div>
+              <div class="v mono">${m.admin_telegram_id ? m.admin_telegram_id : '<span class="muted">not set</span>'}</div>
+            </div>
+          </div>
+
+          <div class="info-card">
+            <h3>Payout wallet</h3>
+            <div class="kv">
+              <div class="k">Address</div>
+              <div class="v mono">${m.payout_wallet ? Fmt.escape(m.payout_wallet) : '<span class="muted">Not set</span>'}</div>
+              <div class="k">Verified</div>
+              <div class="v">${m.wallet_verified_at ? 'Yes · ' + Fmt.relative(m.wallet_verified_at) : '<span class="muted">No</span>'}</div>
+            </div>
+          </div>
+
+          <div class="info-card">
+            <h3>Bot copy</h3>
+            <div class="kv">
+              <div class="k">Welcome</div>
+              <div class="v">${m.welcome_message ? Fmt.escape(m.welcome_message) : '<span class="muted">(using default)</span>'}</div>
+              <div class="k">Description</div>
+              <div class="v">${m.description ? Fmt.escape(m.description) : '<span class="muted">(using default)</span>'}</div>
+            </div>
+          </div>
+
+          <div class="info-card">
+            <h3>Recent orders</h3>
+            ${orders.length === 0
+              ? '<p class="muted" style="margin:0;font-size:13px">No orders yet.</p>'
+              : `<div class="table-wrap">
+                  <table class="table" style="font-size:13px">
+                    <thead><tr>
+                      <th>Order</th><th>Status</th><th class="text-right">Total</th><th class="text-right">When</th>
+                    </tr></thead>
+                    <tbody>
+                      ${orders.map(o => `
+                        <tr>
+                          <td class="mono">#${o.order_number}</td>
+                          <td><span class="badge badge-${o.status.replace('_', '')}">${o.status.replace('_', ' ')}</span></td>
+                          <td class="text-right num">${Fmt.money(o.total, o.currency_code)}</td>
+                          <td class="text-right muted" style="font-size:12px">${Fmt.relative(o.created_at)}</td>
+                        </tr>
+                      `).join('')}
+                    </tbody>
+                  </table>
+                </div>`
+            }
+          </div>
+        </div>
+
+        <div class="action-panel">
+          <h3>Actions</h3>
+          ${m.status === 'active'
+            ? `
+              <button class="btn btn-danger btn-full" id="suspend-btn">Suspend merchant</button>
+              <div class="warning-note">
+                Suspending stops the bot from responding to buyers immediately. Orders, products, and settings are preserved. Reversible.
+              </div>
+            `
+            : m.status === 'suspended'
+              ? `
+                <button class="btn btn-success btn-full" id="activate-btn">Reactivate merchant</button>
+                <div class="warning-note">
+                  Reactivating resumes bot service. The merchant will be able to take orders again within seconds.
+                </div>
+              `
+              : `
+                <button class="btn btn-secondary btn-full" disabled>No actions available</button>
+                <div class="warning-note">
+                  This merchant is in status <strong>${Fmt.escape(m.status)}</strong>. Activation requires completed onboarding.
+                </div>
+              `
+          }
+        </div>
+      </div>
+
+      <div class="confirm-overlay" id="confirm-overlay">
+        <div class="confirm-box">
+          <h3 id="confirm-title">Confirm</h3>
+          <p id="confirm-body">Are you sure?</p>
+          <div class="row">
+            <button class="btn btn-secondary btn-sm" id="confirm-cancel">Cancel</button>
+            <button class="btn btn-primary btn-sm" id="confirm-ok">Confirm</button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    const suspendBtn = document.getElementById('suspend-btn');
+    if (suspendBtn) {
+      suspendBtn.addEventListener('click', () => {
+        showConfirm({
+          title: 'Suspend ' + m.store_name + '?',
+          body: 'Their bot will stop responding to buyers immediately. You can reactivate them at any time. Their data stays intact.',
+          okLabel: 'Suspend',
+          okClass: 'btn-danger',
+          onConfirm: async () => {
+            try {
+              await AdminAPI('POST', '/merchants/' + encodeURIComponent(merchantId) + '/suspend');
+              AdminToast.ok('Merchant suspended.');
+              data = await AdminAPI('GET', '/merchants/' + encodeURIComponent(merchantId));
+              Object.assign(m, data.merchant);
+              render();
+            } catch (err) {
+              AdminToast.err(err.message || 'Suspension failed.');
+            }
+          },
+        });
+      });
+    }
+
+    const activateBtn = document.getElementById('activate-btn');
+    if (activateBtn) {
+      activateBtn.addEventListener('click', () => {
+        showConfirm({
+          title: 'Reactivate ' + m.store_name + '?',
+          body: 'Their bot will resume responding to buyers. Any orders placed while suspended are preserved.',
+          okLabel: 'Reactivate',
+          okClass: 'btn-primary',
+          onConfirm: async () => {
+            try {
+              await AdminAPI('POST', '/merchants/' + encodeURIComponent(merchantId) + '/activate');
+              AdminToast.ok('Merchant reactivated.');
+              data = await AdminAPI('GET', '/merchants/' + encodeURIComponent(merchantId));
+              Object.assign(m, data.merchant);
+              render();
+            } catch (err) {
+              AdminToast.err(err.message || 'Reactivation failed.');
+            }
+          },
+        });
+      });
+    }
+  }
+
+  function showConfirm({ title, body, okLabel, okClass, onConfirm }) {
+    const overlay = document.getElementById('confirm-overlay');
+    document.getElementById('confirm-title').textContent = title;
+    document.getElementById('confirm-body').textContent = body;
+    const ok = document.getElementById('confirm-ok');
+    const cancel = document.getElementById('confirm-cancel');
+    ok.textContent = okLabel;
+    ok.className = 'btn btn-sm ' + (okClass || 'btn-primary');
+
+    const close = () => overlay.classList.remove('show');
+    const okHandler = async () => {
+      ok.disabled = true;
+      ok.textContent = 'Working…';
+      await onConfirm();
+      ok.disabled = false;
+      close();
+    };
+
+    // Re-bind (remove old via clone)
+    const newOk = ok.cloneNode(true);
+    const newCancel = cancel.cloneNode(true);
+    ok.replaceWith(newOk);
+    cancel.replaceWith(newCancel);
+    newOk.addEventListener('click', okHandler);
+    newCancel.addEventListener('click', close);
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); }, { once: true });
+    overlay.classList.add('show');
+  }
+})();
+</script>
+</body>
+</html>

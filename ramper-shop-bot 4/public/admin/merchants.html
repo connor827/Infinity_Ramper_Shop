@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Admin Merchants — Infinity Ramper Shops</title>
+<link rel="stylesheet" href="/assets/branding.css">
+<style>
+  .merchants-row { cursor: pointer; transition: background 120ms ease; }
+  .merchants-row:hover { background: var(--bg-warm); }
+  .mono { font-family: 'IBM Plex Mono', monospace; font-size: 12px; }
+  .status-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 2px 8px;
+    border: 1px solid var(--border);
+    border-radius: 100px;
+    font-family: 'Funnel Display', sans-serif;
+    font-weight: 500;
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .status-pill::before {
+    content: '';
+    width: 5px; height: 5px; border-radius: 50%;
+    display: inline-block;
+    background: var(--ink-faint);
+  }
+  .status-pill.active::before { background: var(--green, #3a7a52); }
+  .status-pill.suspended::before { background: var(--danger, #b0413e); }
+  .status-pill.pending::before { background: var(--accent); }
+  .drawer-section { margin-bottom: 24px; }
+  .drawer-section h4 {
+    font-family: 'Funnel Display', sans-serif;
+    font-weight: 500;
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    margin: 0 0 10px;
+  }
+  .drawer-section .kv {
+    display: grid;
+    grid-template-columns: 140px 1fr;
+    gap: 10px 16px;
+    font-size: 13px;
+  }
+  .drawer-section .kv .k { color: var(--ink-faint); }
+  .drawer-section .kv .v { color: var(--ink); word-break: break-all; }
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1px;
+    background: var(--border);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+  }
+  @media (max-width: 640px) { .stats-grid { grid-template-columns: repeat(2, 1fr); } }
+  .stat { background: var(--bg); padding: 14px 16px; }
+  .stat .label {
+    font-size: 10px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    margin-bottom: 6px;
+  }
+  .stat .value {
+    font-family: 'Funnel Display', serif;
+    font-weight: 500;
+    font-size: 18px;
+    color: var(--ink);
+  }
+  .danger-zone {
+    border: 1px dashed var(--border);
+    border-radius: 6px;
+    padding: 16px 18px;
+    margin-top: 20px;
+    background: var(--bg-warm);
+  }
+  .danger-zone p { margin: 0 0 12px; color: var(--ink-mid); font-size: 13px; }
+</style>
+</head>
+<body>
+<script src="/assets/admin-shell.js"></script>
+<script>
+(async () => {
+  'use strict';
+  if (!AdminAuth.require()) return;
+
+  const main = AdminShell.render({
+    crumbs: [{ label: 'Merchants' }],
+    active: 'merchants',
+  });
+
+  const STATUSES = [
+    ['', 'All statuses'],
+    ['active', 'Active'],
+    ['pending', 'Pending'],
+    ['suspended', 'Suspended'],
+    ['terminated', 'Terminated'],
+  ];
+
+  main.innerHTML = `
+    <div class="page-head">
+      <div>
+        <h1 class="display mt-2">Merchants</h1>
+        <div class="meta" id="merchants-meta" style="color:var(--ink-mid);font-size:13px;margin-top:6px">Loading…</div>
+      </div>
+    </div>
+
+    <div class="toolbar">
+      <input type="search" id="f-search" placeholder="Search by name, email, or bot username…"/>
+      <select id="f-status">
+        ${STATUSES.map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}
+      </select>
+      <button class="btn btn-ghost btn-sm" id="reset-btn">Reset</button>
+    </div>
+
+    <div id="merchants-wrap" class="mb-3"><div class="empty"><em>Loading merchants…</em></div></div>
+
+    <div class="drawer-overlay" id="drawer-overlay"></div>
+    <div class="drawer" id="drawer" aria-hidden="true">
+      <div class="drawer-head">
+        <div>
+          <span class="eyebrow plain" id="d-eyebrow">Merchant</span>
+          <h2 class="display mt-1" id="d-title">—</h2>
+        </div>
+        <button class="btn btn-ghost btn-sm" id="d-close">Close ×</button>
+      </div>
+      <div class="drawer-body" id="d-body"></div>
+    </div>
+  `;
+
+  const state = {
+    search: '',
+    status: '',
+    merchants: [],
+  };
+
+  async function loadMerchants() {
+    const params = new URLSearchParams();
+    if (state.search) params.set('search', state.search);
+    if (state.status) params.set('status', state.status);
+    const qs = params.toString();
+    try {
+      const res = await AdminAPI('GET', '/merchants' + (qs ? '?' + qs : ''));
+      state.merchants = res.merchants;
+      render(res.total);
+    } catch (err) {
+      document.getElementById('merchants-wrap').innerHTML = `
+        <div class="empty">
+          <div class="display">Couldn't load merchants.</div>
+          <em>${Fmt.escape(err.message || '')}</em>
+        </div>`;
+      document.getElementById('merchants-meta').textContent = 'Error';
+    }
+  }
+
+  function render(total) {
+    const wrap = document.getElementById('merchants-wrap');
+    const meta = document.getElementById('merchants-meta');
+    const merchants = state.merchants;
+
+    meta.textContent = total === 1
+      ? '1 merchant'
+      : `${total} merchants`;
+
+    if (merchants.length === 0) {
+      wrap.innerHTML = `<div class="empty"><em>No merchants match the filters.</em></div>`;
+      return;
+    }
+
+    const rows = merchants.map(m => `
+      <tr class="merchants-row" data-id="${Fmt.escape(m.id)}">
+        <td>
+          <div style="font-weight:500;color:var(--ink);margin-bottom:2px">${Fmt.escape(m.store_name)}</div>
+          <div class="mono" style="color:var(--ink-faint)">${m.email ? Fmt.escape(m.email) : '—'}</div>
+        </td>
+        <td>${m.bot_username ? `<span class="mono">@${Fmt.escape(m.bot_username)}</span>` : '<span style="color:var(--ink-faint)">—</span>'}</td>
+        <td><span class="status-pill ${Fmt.escape(m.status)}">${Fmt.escape(m.status)}</span></td>
+        <td class="text-right mono">${Fmt.num(m.product_count)}</td>
+        <td class="text-right mono">${Fmt.num(m.order_count)}</td>
+        <td class="text-right mono">${Fmt.money(m.revenue_30d, 'USD')}</td>
+        <td class="text-right mono" style="color:var(--ink-faint)">${m.last_order_at ? Fmt.relative(m.last_order_at) : 'never'}</td>
+        <td class="text-right mono" style="color:var(--ink-faint)">${Fmt.date(m.created_at)}</td>
+      </tr>
+    `).join('');
+
+    wrap.innerHTML = `
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Merchant</th>
+            <th>Bot</th>
+            <th>Status</th>
+            <th class="text-right">Products</th>
+            <th class="text-right">Orders</th>
+            <th class="text-right">Rev · 30d</th>
+            <th class="text-right">Last order</th>
+            <th class="text-right">Signed up</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    `;
+    wrap.querySelectorAll('tr.merchants-row').forEach(row => {
+      row.addEventListener('click', () => openDetail(row.dataset.id));
+    });
+  }
+
+  // ---------- Drawer: merchant detail ----------
+  async function openDetail(id) {
+    document.getElementById('d-title').textContent = 'Loading…';
+    document.getElementById('d-body').innerHTML = '<div class="empty"><em>Fetching merchant…</em></div>';
+    openDrawer();
+
+    try {
+      const d = await AdminAPI('GET', '/merchants/' + encodeURIComponent(id));
+      renderDetail(d);
+    } catch (err) {
+      document.getElementById('d-body').innerHTML = `<div class="empty"><em>Couldn't load: ${Fmt.escape(err.message)}</em></div>`;
+    }
+  }
+
+  function renderDetail(d) {
+    const m = d.merchant;
+    document.getElementById('d-title').textContent = m.store_name;
+
+    const kv = (k, v) => `<div class="k">${k}</div><div class="v">${v}</div>`;
+
+    document.getElementById('d-body').innerHTML = `
+      <div class="drawer-section">
+        <h4>Stats</h4>
+        <div class="stats-grid">
+          <div class="stat">
+            <div class="label">Products</div>
+            <div class="value">${Fmt.num(d.stats.product_count)}</div>
+          </div>
+          <div class="stat">
+            <div class="label">Orders</div>
+            <div class="value">${Fmt.num(d.stats.order_count)}</div>
+          </div>
+          <div class="stat">
+            <div class="label">Revenue · 30d</div>
+            <div class="value">${Fmt.money(d.stats.revenue_30d, m.currency_code)}</div>
+          </div>
+          <div class="stat">
+            <div class="label">Revenue · all</div>
+            <div class="value">${Fmt.money(d.stats.revenue_all_time, m.currency_code)}</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="drawer-section">
+        <h4>Details</h4>
+        <div class="kv">
+          ${kv('Status', `<span class="status-pill ${Fmt.escape(m.status)}">${Fmt.escape(m.status)}</span>`)}
+          ${kv('Email', m.email ? Fmt.escape(m.email) : '—')}
+          ${kv('Merchant ID', `<span class="mono">${Fmt.escape(m.id)}</span>`)}
+          ${kv('Bot', m.bot_username ? `<a href="https://t.me/${Fmt.escape(m.bot_username)}" target="_blank" style="color:var(--accent)" class="mono">@${Fmt.escape(m.bot_username)}</a>` : '<span style="color:var(--ink-faint)">Not connected</span>')}
+          ${kv('Wallet', m.payout_wallet ? `<span class="mono">${Fmt.escape(m.payout_wallet)}</span>${m.wallet_verified_at ? ' <span style="color:var(--green);font-size:11px;margin-left:6px">verified</span>' : ''}` : '<span style="color:var(--ink-faint)">Not connected</span>')}
+          ${kv('Currency', `<span class="mono">${Fmt.escape(m.currency_code)}</span>`)}
+          ${kv('Onboarding', `<span class="mono">${Fmt.escape(m.onboarding_step)}</span>`)}
+          ${kv('Admin Telegram ID', m.admin_telegram_id ? `<span class="mono">${m.admin_telegram_id}</span>` : '<span style="color:var(--ink-faint)">None</span>')}
+          ${kv('Signed up', Fmt.date(m.created_at))}
+          ${kv('Last update', Fmt.relative(m.updated_at))}
+        </div>
+      </div>
+
+      ${m.welcome_message || m.description ? `
+        <div class="drawer-section">
+          <h4>Bot copy</h4>
+          <div class="kv">
+            ${m.welcome_message ? kv('Welcome msg', Fmt.escape(m.welcome_message)) : ''}
+            ${m.description ? kv('Description', Fmt.escape(m.description)) : ''}
+          </div>
+        </div>
+      ` : ''}
+
+      ${d.recent_orders.length > 0 ? `
+        <div class="drawer-section">
+          <h4>Recent orders</h4>
+          <table class="table" style="margin-top:0">
+            <thead>
+              <tr><th>#</th><th>Status</th><th class="text-right">Total</th><th class="text-right">When</th></tr>
+            </thead>
+            <tbody>
+              ${d.recent_orders.map(o => `
+                <tr>
+                  <td class="mono">#${o.order_number}</td>
+                  <td><span class="badge badge-${o.status.replace('_','')}">${o.status.replace('_',' ')}</span></td>
+                  <td class="text-right mono">${Fmt.money(o.total, o.currency_code)}</td>
+                  <td class="text-right mono" style="color:var(--ink-faint)">${Fmt.relative(o.created_at)}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      ` : ''}
+
+      <div class="danger-zone">
+        ${m.status === 'suspended'
+          ? `
+            <p><strong style="color:var(--ink)">This merchant is suspended.</strong> Their bot is offline, buyers can't reach them. Reactivate to restore service (requires bot and wallet to be connected).</p>
+            <button class="btn btn-primary btn-sm" id="activate-btn" data-id="${Fmt.escape(m.id)}" ${!m.bot_username || !m.payout_wallet ? 'disabled title="Missing bot or wallet"' : ''}>Activate merchant</button>
+          `
+          : `
+            <p><strong style="color:var(--ink)">Suspend merchant.</strong> Their bot goes offline immediately. Products, orders, and wallet stay saved. Reversible.</p>
+            <button class="btn btn-secondary btn-sm" id="suspend-btn" data-id="${Fmt.escape(m.id)}">Suspend merchant</button>
+          `}
+      </div>
+    `;
+
+    const suspendBtn = document.getElementById('suspend-btn');
+    if (suspendBtn) {
+      suspendBtn.addEventListener('click', () => handleSuspend(suspendBtn.dataset.id, m.store_name));
+    }
+    const activateBtn = document.getElementById('activate-btn');
+    if (activateBtn) {
+      activateBtn.addEventListener('click', () => handleActivate(activateBtn.dataset.id, m.store_name));
+    }
+  }
+
+  async function handleSuspend(id, storeName) {
+    const reason = prompt(`Suspend "${storeName}"? This takes their bot offline immediately. Optional reason:`, '');
+    if (reason === null) return;  // cancelled
+    try {
+      await AdminAPI('POST', '/merchants/' + encodeURIComponent(id) + '/suspend', { reason });
+      Toast.ok('Merchant suspended.');
+      closeDrawer();
+      loadMerchants();
+    } catch (err) {
+      Toast.err(err.message || 'Suspend failed.');
+    }
+  }
+
+  async function handleActivate(id, storeName) {
+    if (!confirm(`Activate "${storeName}"? Their bot will come back online.`)) return;
+    try {
+      await AdminAPI('POST', '/merchants/' + encodeURIComponent(id) + '/activate', {});
+      Toast.ok('Merchant activated.');
+      closeDrawer();
+      loadMerchants();
+    } catch (err) {
+      Toast.err(err.message || 'Activate failed.');
+    }
+  }
+
+  function openDrawer() {
+    document.getElementById('drawer').classList.add('open');
+    document.getElementById('drawer-overlay').classList.add('open');
+    document.getElementById('drawer').setAttribute('aria-hidden', 'false');
+  }
+  function closeDrawer() {
+    document.getElementById('drawer').classList.remove('open');
+    document.getElementById('drawer-overlay').classList.remove('open');
+    document.getElementById('drawer').setAttribute('aria-hidden', 'true');
+  }
+
+  document.getElementById('d-close').addEventListener('click', closeDrawer);
+  document.getElementById('drawer-overlay').addEventListener('click', closeDrawer);
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && document.getElementById('drawer').classList.contains('open')) closeDrawer();
+  });
+
+  let searchTimer;
+  document.getElementById('f-search').addEventListener('input', (e) => {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => { state.search = e.target.value; loadMerchants(); }, 250);
+  });
+  document.getElementById('f-status').addEventListener('change', (e) => {
+    state.status = e.target.value;
+    loadMerchants();
+  });
+  document.getElementById('reset-btn').addEventListener('click', () => {
+    state.search = ''; state.status = '';
+    document.getElementById('f-search').value = '';
+    document.getElementById('f-status').value = '';
+    loadMerchants();
+  });
+
+  await loadMerchants();
+})();
+</script>
+</body>
+</html>

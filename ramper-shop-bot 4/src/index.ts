@@ -5,6 +5,7 @@ import { env } from './config/env.js';
 import { logger } from './config/logger.js';
 import { telegramRouter } from './routes/telegram.js';
 import { merchantRouter } from './routes/merchant.js';
+import { adminRouter } from './routes/admin.js';
 import { ramperRouter } from './routes/ramper.js';
 import { pool } from './db/pool.js';
 
@@ -19,6 +20,9 @@ app.use(express.json({ limit: '1mb' }));
 app.get('/healthz', (_req, res) => {
   res.json({ ok: true, env: env.NODE_ENV });
 });
+
+// --- Admin API (mounted before merchant so /api/admin/* hits adminRouter) --
+app.use('/api/admin', adminRouter);
 
 // --- Merchant API (before static, so /api/* doesn't get caught) ------------
 app.use('/api', merchantRouter);
@@ -51,6 +55,21 @@ for (const p of DASHBOARD_PAGES) {
     res.sendFile(path.join(publicDir, 'dashboard', `${p}.html`));
   });
 }
+
+// Clean URLs for admin pages: /admin -> admin/index.html (login page or redirect)
+const ADMIN_PAGES = ['overview', 'merchants', 'activity'];
+app.get('/admin', (_req, res) => {
+  res.sendFile(path.join(publicDir, 'admin', 'index.html'));
+});
+for (const p of ADMIN_PAGES) {
+  app.get(`/admin/${p}`, (_req, res) => {
+    res.sendFile(path.join(publicDir, 'admin', `${p}.html`));
+  });
+}
+// /admin/merchants/:id → admin/merchant-detail.html (the :id is read from URL client-side)
+app.get(/^\/admin\/merchants\/[a-f0-9-]+$/i, (_req, res) => {
+  res.sendFile(path.join(publicDir, 'admin', 'merchant-detail.html'));
+});
 
 app.use(express.static(publicDir));
 
