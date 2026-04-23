@@ -148,6 +148,7 @@
             <nav class="dash-nav">
               <a href="/admin/overview" class="${isActive('/admin/overview') ? 'active' : ''}">Overview</a>
               <a href="/admin/merchants" class="${isActive('/admin/merchants') ? 'active' : ''}">Merchants</a>
+              <a href="/admin/activity" class="${isActive('/admin/activity') ? 'active' : ''}">Activity</a>
             </nav>
             <div class="dash-actions">
               <button id="admin-theme-toggle" class="btn btn-icon" title="Toggle theme">${savedTheme === 'dark' ? '☾' : '☀'}</button>
