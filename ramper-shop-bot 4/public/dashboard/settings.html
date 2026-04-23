@@ -5,31 +5,467 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Settings — Infinity Ramper Shops</title>
 <link rel="stylesheet" href="/assets/branding.css">
+<style>
+  .settings-stack { display: flex; flex-direction: column; gap: 1px; background: var(--border); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  .settings-card {
+    background: var(--bg);
+    padding: 28px 32px;
+  }
+  .settings-card + .settings-card { border-top: 0; }
+  .settings-card h3 {
+    font-family: 'Funnel Display', serif;
+    font-weight: 500;
+    font-size: 22px;
+    letter-spacing: -0.022em;
+    margin: 0 0 4px;
+    color: var(--ink);
+  }
+  .settings-card .card-meta {
+    color: var(--ink-mid);
+    font-size: 13px;
+    margin-bottom: 24px;
+  }
+  .form-row { display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px; }
+  .form-row label {
+    font-family: 'Funnel Display', sans-serif;
+    font-weight: 500;
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+  }
+  .form-row input,
+  .form-row textarea,
+  .form-row select {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--ink);
+    font-family: 'Inter', sans-serif;
+    font-size: 14px;
+    padding: 10px 12px;
+    border-radius: 6px;
+    outline: none;
+    transition: border-color 120ms ease;
+    width: 100%;
+  }
+  .form-row input:focus,
+  .form-row textarea:focus,
+  .form-row select:focus { border-color: var(--accent); }
+  .form-row input[readonly] { color: var(--ink-mid); background: var(--bg-warm); cursor: not-allowed; }
+  .form-row .hint { color: var(--ink-faint); font-size: 12px; }
+  .form-row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 640px) { .form-row-2 { grid-template-columns: 1fr; } }
+  .status-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 10px;
+    border: 1px solid var(--border);
+    border-radius: 100px;
+    font-family: 'Funnel Display', sans-serif;
+    font-weight: 500;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink);
+    margin-left: 10px;
+    vertical-align: middle;
+  }
+  .status-pill::before {
+    content: '';
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    display: inline-block;
+    background: var(--ink-faint);
+  }
+  .status-pill.ok::before { background: var(--green, #3a7a52); }
+  .status-pill.warn::before { background: var(--accent); }
+  .status-pill.err::before { background: var(--danger, #b0413e); }
+  .card-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 8px;
+  }
+  .danger-zone {
+    border: 1px dashed var(--border);
+    border-radius: 6px;
+    padding: 16px 18px;
+    margin-top: 18px;
+    background: var(--bg-warm);
+  }
+  .danger-zone p { margin: 0 0 12px; color: var(--ink-mid); font-size: 13px; }
+  .mono { font-family: 'IBM Plex Mono', monospace; font-size: 13px; }
+  .msg-box {
+    background: var(--bg-warm);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 12px 14px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    color: var(--ink-mid);
+    user-select: all;
+    cursor: text;
+    word-break: break-all;
+  }
+</style>
 </head>
 <body>
 <div id="page"></div>
 <script src="/assets/shell.js"></script>
 <script>
-if (Auth.require()) {
+(async () => {
+  'use strict';
+  if (!Auth.require()) return;
+
   const main = Shell.render({
     crumbs: [{ label: 'Dashboard', href: '/dashboard' }, { label: 'Settings' }],
   });
+
+  const CURRENCIES = [
+    ['USD', 'US Dollar'],
+    ['EUR', 'Euro'],
+    ['GBP', 'British Pound'],
+    ['CAD', 'Canadian Dollar'],
+    ['AUD', 'Australian Dollar'],
+    ['INR', 'Indian Rupee'],
+  ];
+
   main.innerHTML = `
     <div class="page-head">
       <div>
         <span class="eyebrow">Admin</span>
         <h1 class="display mt-2">Settings</h1>
-        <div class="meta">Coming next.</div>
+        <div class="meta" id="settings-meta">Loading…</div>
       </div>
     </div>
-    <div class="card">
-      <div class="empty">
-        <div class="display">Settings — coming next.</div>
-        <em>This area is in the plan. Reach out once you want it prioritised.</em>
-      </div>
+
+    <div class="settings-stack" id="settings-stack">
+      <div class="settings-card"><div class="hint">Loading…</div></div>
     </div>
   `;
-}
+
+  let me = null;
+
+  // ---------- Load merchant ----------
+  async function loadMe() {
+    try {
+      me = await API('GET', '/me');
+      document.getElementById('settings-meta').textContent =
+        me.store_name + ' · ' + me.status;
+      render();
+    } catch (err) {
+      console.error('Failed to load merchant:', err);
+      document.getElementById('settings-meta').textContent = 'Error loading';
+      document.getElementById('settings-stack').innerHTML = `
+        <div class="settings-card">
+          <p style="color:var(--ink-mid)">Couldn't load your settings. Refresh the page or try again in a moment.</p>
+        </div>
+      `;
+    }
+  }
+
+  function escapeHtml(s) {
+    return String(s ?? '')
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;')
+      .replaceAll("'", '&#039;');
+  }
+  function escapeAttr(s) {
+    return String(s ?? '').replaceAll('"', '&quot;').replaceAll("'", '&#039;');
+  }
+
+  // ---------- Render ----------
+  function render() {
+    document.getElementById('settings-stack').innerHTML =
+      renderStoreCard() + renderWalletCard() + renderBotCard() + renderAccountCard();
+
+    wireStoreCard();
+    wireWalletCard();
+    wireBotCard();
+    wireAccountCard();
+  }
+
+  // ---------- Card 1: Store details ----------
+  function renderStoreCard() {
+    return `
+      <div class="settings-card" id="store-card">
+        <h3>Store details</h3>
+        <div class="card-meta">The name and currency your buyers see in the bot.</div>
+
+        <div class="form-row">
+          <label for="s-store-name">Store name</label>
+          <input type="text" id="s-store-name" maxlength="120" value="${escapeAttr(me.store_name)}"/>
+        </div>
+
+        <div class="form-row-2">
+          <div class="form-row">
+            <label for="s-currency">Currency</label>
+            <select id="s-currency">
+              ${CURRENCIES.map(([code, label]) =>
+                `<option value="${code}" ${me.currency_code === code ? 'selected' : ''}>${code} — ${label}</option>`
+              ).join('')}
+            </select>
+            <div class="hint">Buyers are charged in this currency. USDC conversion happens at settlement.</div>
+          </div>
+          <div class="form-row">
+            <label for="s-admin-id">Admin Telegram ID</label>
+            <input type="number" id="s-admin-id" value="${me.admin_telegram_id ?? ''}" placeholder="Optional"/>
+            <div class="hint">You'll receive order notifications at this Telegram ID. <a href="https://t.me/userinfobot" target="_blank" style="color:var(--accent)">Find yours</a>.</div>
+          </div>
+        </div>
+
+        <div class="card-actions">
+          <button class="btn btn-primary btn-sm" id="save-store-btn">Save store details</button>
+        </div>
+      </div>
+    `;
+  }
+
+  function wireStoreCard() {
+    document.getElementById('save-store-btn').addEventListener('click', async (e) => {
+      const name = document.getElementById('s-store-name').value.trim();
+      const currency = document.getElementById('s-currency').value;
+      const adminIdStr = document.getElementById('s-admin-id').value.trim();
+
+      if (!name) return Toast.err('Store name is required.');
+
+      const payload = { store_name: name, currency_code: currency };
+      if (adminIdStr === '') {
+        payload.admin_telegram_id = null;
+      } else {
+        const adminId = parseInt(adminIdStr, 10);
+        if (!isFinite(adminId) || adminId <= 0) {
+          return Toast.err('Admin Telegram ID must be a positive number.');
+        }
+        payload.admin_telegram_id = adminId;
+      }
+
+      e.target.disabled = true;
+      e.target.textContent = 'Saving…';
+      try {
+        me = await API('PATCH', '/store', payload);
+        Toast.ok('Store details saved.');
+        render();
+      } catch (err) {
+        Toast.err(err.message || 'Save failed.');
+        e.target.disabled = false;
+        e.target.textContent = 'Save store details';
+      }
+    });
+  }
+
+  // ---------- Card 2: Payout wallet ----------
+  function renderWalletCard() {
+    const connected = !!me.payout_wallet;
+    const verified = me.wallet_verified;
+    const pillClass = !connected ? '' : verified ? 'ok' : 'warn';
+    const pillLabel = !connected ? 'Not connected' : verified ? 'Verified' : 'Unverified';
+
+    const signMessage = `Connect wallet to Infinity Ramper Shops · merchant ${me.id} · ${Math.floor(Date.now() / 1000)}`;
+
+    return `
+      <div class="settings-card" id="wallet-card">
+        <h3>Payout wallet <span class="status-pill ${pillClass}">${pillLabel}</span></h3>
+        <div class="card-meta">
+          USDC settles directly to this Polygon wallet. We never hold your funds.
+          ${connected ? '' : ' Set one before going live.'}
+        </div>
+
+        ${connected ? `
+          <div class="form-row">
+            <label>Current address</label>
+            <input type="text" readonly value="${escapeAttr(me.payout_wallet)}" class="mono"/>
+          </div>
+        ` : ''}
+
+        <div class="form-row">
+          <label for="s-wallet-address">${connected ? 'Change to new address' : 'Wallet address'}</label>
+          <input type="text" id="s-wallet-address" placeholder="0x..." class="mono"/>
+          <div class="hint">Must be a Polygon-compatible address holding USDC.</div>
+        </div>
+
+        <details style="margin-bottom: 16px">
+          <summary style="cursor: pointer; font-size: 13px; color: var(--ink-mid); padding: 4px 0;">Verify ownership (optional)</summary>
+          <div style="padding: 14px 0 4px;">
+            <div class="hint" style="margin-bottom: 8px">
+              Sign this exact message with the wallet in MetaMask (or similar), then paste the signature below. This proves you own the address.
+            </div>
+            <div class="msg-box" id="s-wallet-message">${escapeHtml(signMessage)}</div>
+            <div class="form-row" style="margin-top: 12px">
+              <label for="s-wallet-signature">Signature</label>
+              <input type="text" id="s-wallet-signature" placeholder="0x..." class="mono"/>
+            </div>
+          </div>
+        </details>
+
+        <div class="card-actions">
+          <button class="btn btn-primary btn-sm" id="save-wallet-btn">${connected ? 'Update wallet' : 'Save wallet'}</button>
+        </div>
+      </div>
+    `;
+  }
+
+  function wireWalletCard() {
+    document.getElementById('save-wallet-btn').addEventListener('click', async (e) => {
+      const address = document.getElementById('s-wallet-address').value.trim();
+      const signature = document.getElementById('s-wallet-signature').value.trim();
+      const message = document.getElementById('s-wallet-message').textContent;
+
+      if (!address) return Toast.err('Paste a wallet address.');
+      if (!/^0x[a-fA-F0-9]{40}$/.test(address)) {
+        return Toast.err("That doesn't look like a valid Ethereum-compatible address.");
+      }
+
+      const payload = { address };
+      if (signature) {
+        if (!/^0x[a-fA-F0-9]+$/.test(signature)) {
+          return Toast.err('Signature must start with 0x and contain only hex characters.');
+        }
+        payload.signature = signature;
+        payload.message = message;
+      }
+
+      e.target.disabled = true;
+      e.target.textContent = 'Saving…';
+      try {
+        me = await API('PATCH', '/wallet', payload);
+        Toast.ok(signature ? 'Wallet verified and updated.' : 'Wallet saved (unverified).');
+        render();
+      } catch (err) {
+        Toast.err(err.message || 'Save failed.');
+        e.target.disabled = false;
+        e.target.textContent = 'Update wallet';
+      }
+    });
+  }
+
+  // ---------- Card 3: Bot ----------
+  function renderBotCard() {
+    const hasBot = !!me.bot_username;
+    const pillClass = hasBot ? 'ok' : '';
+    const pillLabel = hasBot ? 'Connected' : 'Not connected';
+
+    return `
+      <div class="settings-card" id="bot-card">
+        <h3>Telegram bot <span class="status-pill ${pillClass}">${pillLabel}</span></h3>
+        <div class="card-meta">
+          The Telegram bot your buyers interact with.
+          ${hasBot ? '' : ' Connect one to start selling.'}
+        </div>
+
+        ${hasBot ? `
+          <div class="form-row">
+            <label>Current bot</label>
+            <input type="text" readonly value="@${escapeAttr(me.bot_username)}" class="mono"/>
+            <div class="hint">
+              <a href="https://t.me/${escapeAttr(me.bot_username)}" target="_blank" style="color:var(--accent)">Open @${escapeAttr(me.bot_username)}</a>
+            </div>
+          </div>
+        ` : ''}
+
+        <div class="form-row">
+          <label for="s-bot-token">${hasBot ? 'Change to new bot token' : 'Bot token'}</label>
+          <input type="text" id="s-bot-token" placeholder="123456789:AAE..." class="mono" autocomplete="off"/>
+          <div class="hint">
+            Get a token from <a href="https://t.me/BotFather" target="_blank" style="color:var(--accent)">@BotFather</a> in Telegram. Paste it here to ${hasBot ? 'switch bots' : 'connect'}.
+          </div>
+        </div>
+
+        <div class="card-actions">
+          <button class="btn btn-primary btn-sm" id="save-bot-btn">${hasBot ? 'Switch bot' : 'Connect bot'}</button>
+        </div>
+
+        ${hasBot ? `
+          <div class="danger-zone">
+            <p><strong style="color:var(--ink)">Disconnect bot.</strong> Your bot will stop responding to buyers and your shop will appear offline until you reconnect. Your products, orders, and wallet stay saved.</p>
+            <button class="btn btn-secondary btn-sm" id="disconnect-bot-btn">Disconnect bot</button>
+          </div>
+        ` : ''}
+      </div>
+    `;
+  }
+
+  function wireBotCard() {
+    document.getElementById('save-bot-btn').addEventListener('click', async (e) => {
+      const token = document.getElementById('s-bot-token').value.trim();
+      if (!token) return Toast.err('Paste a bot token from @BotFather.');
+      if (!/^\d+:[\w-]{30,}$/.test(token)) {
+        return Toast.err("That doesn't look like a valid Telegram bot token.");
+      }
+
+      e.target.disabled = true;
+      e.target.textContent = 'Connecting…';
+      try {
+        me = await API('PATCH', '/bot', { bot_token: token });
+        Toast.ok('Bot connected.');
+        render();
+      } catch (err) {
+        Toast.err(err.message || 'Could not connect bot.');
+        e.target.disabled = false;
+        e.target.textContent = me.bot_username ? 'Switch bot' : 'Connect bot';
+      }
+    });
+
+    const disconnect = document.getElementById('disconnect-bot-btn');
+    if (disconnect) {
+      disconnect.addEventListener('click', async (e) => {
+        if (!confirm("Disconnect your bot? Buyers won't be able to reach you until you reconnect it. Your products and orders stay saved.")) return;
+        e.target.disabled = true;
+        e.target.textContent = 'Disconnecting…';
+        try {
+          await API('POST', '/bot/disconnect', {});
+          Toast.ok('Bot disconnected.');
+          me = await API('GET', '/me');
+          render();
+        } catch (err) {
+          Toast.err(err.message || 'Could not disconnect.');
+          e.target.disabled = false;
+          e.target.textContent = 'Disconnect bot';
+        }
+      });
+    }
+  }
+
+  // ---------- Card 4: Account ----------
+  function renderAccountCard() {
+    return `
+      <div class="settings-card" id="account-card">
+        <h3>Account</h3>
+        <div class="card-meta">Your merchant login and session.</div>
+
+        <div class="form-row">
+          <label for="s-email">Email</label>
+          <input type="email" id="s-email" readonly value="${escapeAttr(me.email || '')}"/>
+          <div class="hint">Contact support to change the account email.</div>
+        </div>
+
+        <div class="form-row">
+          <label>Merchant ID</label>
+          <input type="text" readonly value="${escapeAttr(me.id)}" class="mono"/>
+          <div class="hint">Reference this if contacting support.</div>
+        </div>
+
+        <div class="card-actions">
+          <button class="btn btn-secondary btn-sm" id="signout-btn">Sign out</button>
+        </div>
+      </div>
+    `;
+  }
+
+  function wireAccountCard() {
+    document.getElementById('signout-btn').addEventListener('click', () => {
+      if (confirm('Sign out of this dashboard?')) {
+        Auth.logout();
+      }
+    });
+  }
+
+  await loadMe();
+})();
 </script>
 </body>
 </html>

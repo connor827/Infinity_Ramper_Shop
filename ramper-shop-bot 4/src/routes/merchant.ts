@@ -266,8 +266,9 @@ merchantRouter.post('/onboarding/activate', requireAuth, async (req: AuthedReque
 // ---------------------------------------------------------------------------
 
 const storeSettingsSchema = z.object({
+  store_name: z.string().min(1).max(120).optional(),
   currency_code: z.string().length(3).optional(),
-  admin_telegram_id: z.number().int().positive().optional(),
+  admin_telegram_id: z.number().int().positive().nullable().optional(),
 });
 
 merchantRouter.patch('/store', requireAuth, async (req: AuthedRequest, res) => {
@@ -279,11 +280,15 @@ merchantRouter.patch('/store', requireAuth, async (req: AuthedRequest, res) => {
   const fields: string[] = [];
   const values: any[] = [req.merchantId];
   let i = 2;
+  if (parsed.data.store_name !== undefined) {
+    fields.push(`store_name = $${i++}`);
+    values.push(parsed.data.store_name.trim());
+  }
   if (parsed.data.currency_code) {
     fields.push(`currency_code = $${i++}`);
     values.push(parsed.data.currency_code.toUpperCase());
   }
-  if (parsed.data.admin_telegram_id) {
+  if (parsed.data.admin_telegram_id !== undefined) {
     fields.push(`admin_telegram_id = $${i++}`);
     values.push(parsed.data.admin_telegram_id);
   }
@@ -291,12 +296,108 @@ merchantRouter.patch('/store', requireAuth, async (req: AuthedRequest, res) => {
     res.status(400).json({ error: 'no fields to update' });
     return;
   }
+  fields.push(`updated_at = NOW()`);
   const { pool } = await import('../db/pool.js');
   await pool.query(
     `UPDATE merchants SET ${fields.join(', ')} WHERE id = $1`,
     values
   );
-  res.json({ ok: true });
+  const updated = await getMerchantById(req.merchantId!);
+  res.json(updated ? publicMerchant(updated) : { ok: true });
+});
+
+// Update payout wallet from Settings (post-onboarding). Reuses signature-verify
+// logic but does NOT reset onboarding_step.
+merchantRouter.patch('/wallet', requireAuth, async (req: AuthedRequest, res) => {
+  const parsed = walletSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.flatten() });
+    return;
+  }
+  const sigProvided = parsed.data.signature && parsed.data.message;
+  let verified = false;
+  if (sigProvided) {
+    try {
+      const recovered = ethers.verifyMessage(parsed.data.message!, parsed.data.signature!);
+      if (recovered.toLowerCase() !== parsed.data.address.toLowerCase()) {
+        res.status(400).json({ error: 'signature does not match address' });
+        return;
+      }
+      if (!parsed.data.message!.includes(req.merchantId!)) {
+        res.status(400).json({ error: 'message must include your merchant id' });
+        return;
+      }
+      verified = true;
+    } catch (err) {
+      logger.error({ err }, 'wallet verification failed');
+      res.status(400).json({ error: 'could not verify signature' });
+      return;
+    }
+  }
+  const address = ethers.getAddress(parsed.data.address);
+  const { pool } = await import('../db/pool.js');
+  await pool.query(
+    `UPDATE merchants
+        SET payout_wallet = $2,
+            wallet_verified_at = ${verified ? 'NOW()' : 'NULL'},
+            updated_at = NOW()
+      WHERE id = $1`,
+    [req.merchantId, address]
+  );
+  const updated = await getMerchantById(req.merchantId!);
+  res.json(updated ? publicMerchant(updated) : { ok: true, verified });
+});
+
+// Reconnect a new bot from Settings. Similar to onboarding/bot but keeps the
+// merchant active if they were already live.
+merchantRouter.patch('/bot', requireAuth, async (req: AuthedRequest, res) => {
+  const parsed = botSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.flatten() });
+    return;
+  }
+  // Validate token against Telegram's API, same as onboarding path
+  try {
+    const r = await fetch(`https://api.telegram.org/bot${parsed.data.bot_token}/getMe`);
+    const json = (await r.json()) as any;
+    if (!json.ok) {
+      res.status(400).json({ error: 'invalid bot token (Telegram rejected it)' });
+      return;
+    }
+    const botInfo = json.result;
+    const previous = await getMerchantById(req.merchantId!);
+    // If it's the same bot, return early — avoids needless webhook re-registration
+    if (previous && previous.bot_id === botInfo.id) {
+      res.json(publicMerchant(previous));
+      return;
+    }
+    // Invalidate the cached grammy Bot instance for the previous token (if any)
+    if (previous?.bot_token) {
+      invalidateBot(previous.bot_token);
+    }
+    const { pool } = await import('../db/pool.js');
+    await pool.query(
+      `UPDATE merchants
+          SET bot_token = $2, bot_id = $3, bot_username = $4, updated_at = NOW()
+        WHERE id = $1`,
+      [req.merchantId, parsed.data.bot_token, botInfo.id, botInfo.username]
+    );
+    // Register webhook for the new bot
+    try {
+      await fetch(
+        `https://api.telegram.org/bot${parsed.data.bot_token}/setWebhook?url=${encodeURIComponent(
+          `${env.PUBLIC_URL}/telegram/${env.TELEGRAM_WEBHOOK_SECRET}`
+        )}`
+      );
+    } catch (err) {
+      logger.warn({ err }, 'webhook registration failed on bot change');
+    }
+    const updated = await getMerchantById(req.merchantId!);
+    res.json(updated ? publicMerchant(updated) : { ok: true });
+  } catch (err) {
+    logger.error({ err }, 'bot update failed');
+    res.status(400).json({ error: 'could not validate bot token' });
+  }
 });
 
 // ---------------------------------------------------------------------------
@@ -526,7 +627,11 @@ function publicMerchant(m: {
   store_name: string;
   store_slug: string;
   bot_username: string | null;
+  bot_id: number | null;
+  admin_telegram_id: number | null;
   payout_wallet: string | null;
+  wallet_verified_at: Date | null;
+  currency_code: string;
   status: string;
   onboarding_step: string;
 }) {
@@ -536,7 +641,11 @@ function publicMerchant(m: {
     store_name: m.store_name,
     store_slug: m.store_slug,
     bot_username: m.bot_username,
+    bot_id: m.bot_id,
+    admin_telegram_id: m.admin_telegram_id,
     payout_wallet: m.payout_wallet,
+    wallet_verified: Boolean(m.wallet_verified_at),
+    currency_code: m.currency_code,
     status: m.status,
     onboarding_step: m.onboarding_step,
   };
