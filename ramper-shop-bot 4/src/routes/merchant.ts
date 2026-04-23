@@ -14,6 +14,8 @@ import {
   listActiveProducts,
   listProductsForMerchant,
   updateProduct,
+  listCustomersForMerchant,
+  getCustomerDetail,
   getRecentOrdersForMerchant,
   listOrdersForMerchant,
   countOrdersForMerchant,
@@ -630,6 +632,28 @@ merchantRouter.patch('/orders/:id', requireAuth, async (req: AuthedRequest, res)
 merchantRouter.get('/metrics', requireAuth, async (req: AuthedRequest, res) => {
   const metrics = await getMerchantMetrics(req.merchantId!);
   res.json(metrics);
+});
+
+// ---------------------------------------------------------------------------
+// Customers
+// ---------------------------------------------------------------------------
+
+merchantRouter.get('/customers', requireAuth, async (req: AuthedRequest, res) => {
+  const asStr = (v: unknown): string | undefined =>
+    typeof v === 'string' ? v : undefined;
+  const customers = await listCustomersForMerchant(req.merchantId!, {
+    search: asStr(req.query.search),
+  });
+  res.json(customers);
+});
+
+merchantRouter.get('/customers/:id', requireAuth, async (req: AuthedRequest, res) => {
+  const detail = await getCustomerDetail(req.merchantId!, String(req.params.id));
+  if (!detail) {
+    res.status(404).json({ error: 'customer not found' });
+    return;
+  }
+  res.json(detail);
 });
 
 // ---------------------------------------------------------------------------

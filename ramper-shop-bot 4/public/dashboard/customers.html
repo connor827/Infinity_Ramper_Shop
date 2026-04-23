@@ -5,31 +5,344 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Customers — Infinity Ramper Shops</title>
 <link rel="stylesheet" href="/assets/branding.css">
+<style>
+  .customers-row { cursor: pointer; transition: background 120ms ease; }
+  .customers-row:hover { background: var(--bg-warm); }
+  .tg-avatar {
+    width: 36px; height: 36px; border-radius: 50%;
+    background: var(--bg-warm);
+    border: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+    font-family: 'Funnel Display', sans-serif;
+    font-weight: 500; font-size: 12px;
+    color: var(--ink-mid);
+    text-transform: uppercase;
+  }
+  .mono { font-family: 'IBM Plex Mono', monospace; font-size: 12px; }
+  .drawer-section { margin-bottom: 24px; }
+  .drawer-section h4 {
+    font-family: 'Funnel Display', sans-serif;
+    font-weight: 500; font-size: 11px;
+    letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--ink-faint);
+    margin: 0 0 12px;
+  }
+  .drawer-kv {
+    display: grid;
+    grid-template-columns: 120px 1fr;
+    gap: 10px 16px;
+    font-size: 13px;
+  }
+  .drawer-kv .k { color: var(--ink-faint); }
+  .drawer-kv .v { color: var(--ink); word-break: break-word; }
+</style>
 </head>
 <body>
 <div id="page"></div>
 <script src="/assets/shell.js"></script>
 <script>
-if (Auth.require()) {
+(async () => {
+  'use strict';
+  if (!Auth.require()) return;
+
   const main = Shell.render({
     crumbs: [{ label: 'Dashboard', href: '/dashboard' }, { label: 'Customers' }],
   });
+
   main.innerHTML = `
     <div class="page-head">
       <div>
-        <span class="eyebrow">Admin</span>
+        <span class="eyebrow">Who's buying</span>
         <h1 class="display mt-2">Customers</h1>
-        <div class="meta">Coming next.</div>
+        <div class="meta" id="customers-meta">Loading…</div>
       </div>
     </div>
-    <div class="card">
-      <div class="empty">
-        <div class="display">Customers — coming next.</div>
-        <em>This area is in the plan. Reach out once you want it prioritised.</em>
+
+    <div class="toolbar">
+      <input type="search" id="f-search" placeholder="Search by name or @username…"/>
+      <button class="btn btn-ghost btn-sm" id="reset-btn">Reset</button>
+    </div>
+
+    <div id="customers-wrap" class="mb-3"><div class="empty"><em>Loading customers…</em></div></div>
+
+    <div class="drawer-overlay" id="drawer-overlay"></div>
+    <div class="drawer" id="drawer" aria-hidden="true">
+      <div class="drawer-head">
+        <div>
+          <span class="eyebrow plain">Customer</span>
+          <h2 class="display mt-1" id="d-title">—</h2>
+        </div>
+        <button class="btn btn-ghost btn-sm" id="d-close">Close ×</button>
       </div>
+      <div class="drawer-body" id="d-body"></div>
     </div>
   `;
-}
+
+  const store = {
+    customers: [],
+    currency: 'USD',
+  };
+  const state = { search: '' };
+
+  const SYMBOLS = { USD: '$', EUR: '€', GBP: '£', CAD: 'C$', AUD: 'A$', INR: '₹' };
+
+  function fmtMoney(amount, code) {
+    const n = Number(amount);
+    if (!isFinite(n)) return '—';
+    const sym = SYMBOLS[code] || (code + ' ');
+    return `${sym}${n.toFixed(2)}`;
+  }
+  function fmtDate(s) {
+    if (!s) return '—';
+    const d = new Date(s);
+    if (isNaN(d)) return '—';
+    return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+  }
+  function fmtRelative(s) {
+    if (!s) return '—';
+    const d = new Date(s);
+    if (isNaN(d)) return '—';
+    const ms = Date.now() - d.getTime();
+    if (ms < 60_000) return 'just now';
+    if (ms < 3_600_000) return `${Math.floor(ms / 60_000)}m ago`;
+    if (ms < 86_400_000) return `${Math.floor(ms / 3_600_000)}h ago`;
+    if (ms < 7 * 86_400_000) return `${Math.floor(ms / 86_400_000)}d ago`;
+    return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+  }
+  function escapeHtml(s) {
+    return String(s ?? '')
+      .replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;').replaceAll("'", '&#039;');
+  }
+
+  async function loadMe() {
+    try {
+      const me = await API('GET', '/me');
+      store.currency = (me && me.currency_code) || 'USD';
+    } catch (err) {
+      console.error('Failed to load merchant:', err);
+    }
+  }
+
+  async function loadCustomers() {
+    const params = new URLSearchParams();
+    if (state.search) params.set('search', state.search);
+    const qs = params.toString();
+    try {
+      store.customers = await API('GET', '/customers' + (qs ? '?' + qs : ''));
+      render();
+    } catch (err) {
+      console.error('Failed to load customers:', err);
+      document.getElementById('customers-wrap').innerHTML = `
+        <div class="empty">
+          <div class="display">Couldn't load customers.</div>
+          <em>Refresh the page or try again in a moment.</em>
+        </div>
+      `;
+      document.getElementById('customers-meta').textContent = 'Error loading';
+    }
+  }
+
+  function displayName(c) {
+    if (c.username) return '@' + c.username;
+    if (c.first_name) return c.first_name;
+    return 'Buyer #' + c.telegram_id;
+  }
+  function initials(c) {
+    const name = c.first_name || c.username || '?';
+    return name.split(/\s+/).slice(0, 2).map(w => w[0]?.toUpperCase() || '').join('') || '?';
+  }
+
+  function render() {
+    const wrap = document.getElementById('customers-wrap');
+    const meta = document.getElementById('customers-meta');
+    const customers = store.customers;
+    const isFiltered = !!state.search;
+
+    if (customers.length === 0) {
+      if (isFiltered) {
+        meta.textContent = 'No customers match your search.';
+        wrap.innerHTML = `
+          <div class="empty">
+            <div class="display">Nothing here.</div>
+            <em>Try a different search term.</em>
+          </div>
+        `;
+      } else {
+        meta.textContent = 'No customers yet.';
+        wrap.innerHTML = `
+          <div class="empty">
+            <div class="display">Your customers, <em>waiting to be met.</em></div>
+            <em>When someone places their first order through your bot, they'll appear here.</em>
+          </div>
+        `;
+      }
+      return;
+    }
+
+    // Summary stats
+    const totalSpent = customers.reduce((s, c) => s + Number(c.total_spent), 0);
+    const totalOrders = customers.reduce((s, c) => s + c.order_count, 0);
+    meta.textContent = `${customers.length} ${customers.length === 1 ? 'customer' : 'customers'} · ${totalOrders} orders · ${fmtMoney(totalSpent, store.currency)} total`;
+
+    const rows = customers.map(c => `
+      <tr class="customers-row" data-id="${escapeHtml(c.id)}">
+        <td style="width:52px;padding:10px 12px">
+          <div class="tg-avatar">${escapeHtml(initials(c))}</div>
+        </td>
+        <td>
+          <div style="font-weight:500;color:var(--ink);margin-bottom:2px">${escapeHtml(displayName(c))}</div>
+          ${c.first_name && c.username
+            ? `<div class="mono" style="color:var(--ink-faint)">${escapeHtml(c.first_name)}</div>`
+            : ''}
+        </td>
+        <td class="num">${c.order_count}</td>
+        <td class="num">${fmtMoney(c.total_spent, store.currency)}</td>
+        <td class="mono" style="color:var(--ink-faint)">${fmtDate(c.first_order_at)}</td>
+        <td class="mono" style="color:var(--ink-faint)">${fmtRelative(c.last_order_at)}</td>
+      </tr>
+    `).join('');
+
+    wrap.innerHTML = `
+      <table class="table">
+        <thead>
+          <tr>
+            <th></th>
+            <th>Customer</th>
+            <th>Orders</th>
+            <th>Total spent</th>
+            <th>First order</th>
+            <th>Last order</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    `;
+
+    wrap.querySelectorAll('tr.customers-row').forEach(row => {
+      row.addEventListener('click', () => openDrawer(row.dataset.id));
+    });
+  }
+
+  async function openDrawer(buyerId) {
+    const drawer = document.getElementById('drawer');
+    const overlay = document.getElementById('drawer-overlay');
+    const title = document.getElementById('d-title');
+    const body = document.getElementById('d-body');
+
+    drawer.classList.add('open');
+    overlay.classList.add('open');
+    drawer.setAttribute('aria-hidden', 'false');
+
+    title.textContent = 'Loading…';
+    body.innerHTML = '<div class="empty"><em>Loading customer detail…</em></div>';
+
+    try {
+      const detail = await API('GET', '/customers/' + encodeURIComponent(buyerId));
+      const c = detail.buyer;
+      const orders = detail.orders || [];
+      title.textContent = displayName(c);
+
+      const ordersList = orders.length === 0
+        ? '<p style="color:var(--ink-faint);font-size:13px;margin:0">No orders yet.</p>'
+        : `<table class="table" style="font-size:13px">
+            <thead><tr>
+              <th>Order</th><th>Status</th><th class="text-right">Total</th><th class="text-right">When</th>
+            </tr></thead>
+            <tbody>
+              ${orders.map(o => `
+                <tr style="cursor:pointer" data-order-id="${escapeHtml(o.id)}">
+                  <td class="mono">#${o.order_number}</td>
+                  <td><span class="badge badge-${o.status.replace('_', '')}">${o.status.replace('_', ' ')}</span></td>
+                  <td class="text-right num">${fmtMoney(o.total, o.currency_code)}</td>
+                  <td class="text-right muted" style="font-size:12px">${fmtRelative(o.created_at)}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>`;
+
+      body.innerHTML = `
+        <div class="drawer-section">
+          <h4>Profile</h4>
+          <div class="drawer-kv">
+            <div class="k">Name</div>
+            <div class="v">${c.first_name ? escapeHtml(c.first_name) : '<span class="muted">(not provided)</span>'}</div>
+            <div class="k">Telegram</div>
+            <div class="v">${c.username ? `<a href="https://t.me/${escapeHtml(c.username)}" target="_blank" rel="noopener" style="color:var(--accent)">@${escapeHtml(c.username)}</a>` : '<span class="muted">(no username set)</span>'}</div>
+            <div class="k">Telegram ID</div>
+            <div class="v mono">${c.telegram_id}</div>
+            <div class="k">Last seen</div>
+            <div class="v">${fmtRelative(c.last_seen_at)}</div>
+          </div>
+        </div>
+
+        <div class="drawer-section">
+          <h4>Lifetime stats</h4>
+          <div class="drawer-kv">
+            <div class="k">Total orders</div>
+            <div class="v">${c.order_count}</div>
+            <div class="k">Total spent</div>
+            <div class="v">${fmtMoney(c.total_spent, store.currency)}</div>
+            <div class="k">First order</div>
+            <div class="v">${fmtDate(c.first_order_at)}</div>
+            <div class="k">Last order</div>
+            <div class="v">${fmtDate(c.last_order_at)}</div>
+          </div>
+        </div>
+
+        <div class="drawer-section">
+          <h4>All orders</h4>
+          ${ordersList}
+        </div>
+      `;
+
+      // Clicking an order row in the drawer navigates to the orders page and opens that order
+      body.querySelectorAll('tr[data-order-id]').forEach(tr => {
+        tr.addEventListener('click', () => {
+          window.location.href = `/dashboard/orders?open=${encodeURIComponent(tr.dataset.orderId)}`;
+        });
+      });
+    } catch (err) {
+      body.innerHTML = `
+        <div class="empty">
+          <em>Couldn't load customer detail — ${escapeHtml(err.message || 'try again')}</em>
+        </div>
+      `;
+    }
+  }
+
+  function closeDrawer() {
+    document.getElementById('drawer').classList.remove('open');
+    document.getElementById('drawer-overlay').classList.remove('open');
+    document.getElementById('drawer').setAttribute('aria-hidden', 'true');
+  }
+
+  document.getElementById('d-close').addEventListener('click', closeDrawer);
+  document.getElementById('drawer-overlay').addEventListener('click', closeDrawer);
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && document.getElementById('drawer').classList.contains('open')) {
+      closeDrawer();
+    }
+  });
+
+  let searchTimer;
+  document.getElementById('f-search').addEventListener('input', (e) => {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => {
+      state.search = e.target.value;
+      loadCustomers();
+    }, 250);
+  });
+  document.getElementById('reset-btn').addEventListener('click', () => {
+    state.search = '';
+    document.getElementById('f-search').value = '';
+    loadCustomers();
+  });
+
+  await loadMe();
+  await loadCustomers();
+})();
 </script>
 </body>
 </html>

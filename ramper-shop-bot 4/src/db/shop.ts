@@ -141,6 +141,115 @@ export async function upsertBuyer(
 }
 
 // ------------------------------------------------------------------
+// Customer listing (for merchant dashboard)
+// ------------------------------------------------------------------
+
+export interface CustomerListItem {
+  id: string;
+  telegram_id: number;
+  username: string | null;
+  first_name: string | null;
+  first_order_at: Date | null;
+  last_order_at: Date | null;
+  order_count: number;
+  total_spent: string;    // sum of paid orders only, in merchant's currency
+  last_seen_at: Date;
+}
+
+// Returns one row per buyer who has placed any order with this merchant (paid or not).
+// Buyers who tapped /start but never ordered are excluded — most merchants won't
+// care to see them.
+export async function listCustomersForMerchant(
+  merchantId: string,
+  opts: { search?: string } = {}
+): Promise<CustomerListItem[]> {
+  const values: unknown[] = [merchantId];
+  const where: string[] = ['b.merchant_id = $1'];
+  if (opts.search && opts.search.trim()) {
+    values.push(`%${opts.search.trim()}%`);
+    where.push(`(b.username ILIKE $${values.length} OR b.first_name ILIKE $${values.length})`);
+  }
+  const { rows } = await query<{
+    id: string;
+    telegram_id: string;
+    username: string | null;
+    first_name: string | null;
+    first_order_at: Date | null;
+    last_order_at: Date | null;
+    order_count: string;
+    total_spent: string;
+    last_seen_at: Date;
+  }>(
+    `SELECT b.id, b.telegram_id::text AS telegram_id, b.username, b.first_name, b.last_seen_at,
+            MIN(o.created_at) AS first_order_at,
+            MAX(o.created_at) AS last_order_at,
+            COUNT(o.id)::text AS order_count,
+            COALESCE(SUM(
+              CASE WHEN o.status IN ('paid', 'processing', 'shipped', 'delivered') THEN o.total
+                   ELSE 0 END
+            ), 0)::text AS total_spent
+       FROM buyers b
+       INNER JOIN orders o ON o.buyer_id = b.id
+      WHERE ${where.join(' AND ')}
+      GROUP BY b.id
+      ORDER BY last_order_at DESC NULLS LAST`,
+    values
+  );
+  return rows.map(r => ({
+    id: r.id,
+    telegram_id: Number(r.telegram_id),
+    username: r.username,
+    first_name: r.first_name,
+    first_order_at: r.first_order_at,
+    last_order_at: r.last_order_at,
+    order_count: Number(r.order_count),
+    total_spent: r.total_spent,
+    last_seen_at: r.last_seen_at,
+  }));
+}
+
+// One customer's full picture — used for the drill-down view.
+export interface CustomerDetail {
+  buyer: CustomerListItem;
+  orders: Array<{
+    id: string;
+    order_number: number;
+    total: string;
+    currency_code: string;
+    status: string;
+    created_at: Date;
+    paid_at: Date | null;
+  }>;
+}
+
+export async function getCustomerDetail(
+  merchantId: string,
+  buyerId: string
+): Promise<CustomerDetail | null> {
+  const customers = await listCustomersForMerchant(merchantId);
+  const buyer = customers.find(c => c.id === buyerId);
+  if (!buyer) return null;
+
+  const { rows } = await query<{
+    id: string;
+    order_number: number;
+    total: string;
+    currency_code: string;
+    status: string;
+    created_at: Date;
+    paid_at: Date | null;
+  }>(
+    `SELECT id, order_number, total, currency_code, status, created_at, paid_at
+       FROM orders
+      WHERE buyer_id = $1 AND merchant_id = $2
+      ORDER BY created_at DESC`,
+    [buyerId, merchantId]
+  );
+
+  return { buyer, orders: rows };
+}
+
+// ------------------------------------------------------------------
 // Carts
 // ------------------------------------------------------------------
 
