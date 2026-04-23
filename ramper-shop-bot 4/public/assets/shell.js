@@ -163,9 +163,8 @@
       shell.innerHTML = `
         <aside class="sidebar">
           <div class="brand-wrap">
-            <a href="/dashboard" class="brand-logo" aria-label="Infinity Ramper">
-              <img src="/assets/logo-dark.svg" alt="Infinity Ramper" class="brand-logo-dark"/>
-              <img src="/assets/logo-light.svg" alt="Infinity Ramper" class="brand-logo-light"/>
+            <a href="/dashboard" class="brand" aria-label="Infinity Ramper">
+              Infinity Ramper <em>shops</em>
             </a>
           </div>
           <nav>${navHtml}</nav>
