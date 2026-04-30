@@ -22,11 +22,18 @@ import {
   getOrderDetail,
   updateOrderStatus,
   getMerchantMetrics,
+  listCategoriesForMerchant,
+  createCategory,
+  getCategory,
+  updateCategory,
+  deleteCategory,
+  reorderCategories,
 } from '../db/shop.js';
 import { hashPassword, verifyPassword, signToken, verifyToken } from '../middleware/auth.js';
 import { env } from '../config/env.js';
 import { logger } from '../config/logger.js';
 import { invalidateBot } from '../bot/factory.js';
+import type { ShippingAddress } from '../types/index.js';
 
 export const merchantRouter = Router();
 
@@ -459,6 +466,7 @@ const productSchema = z.object({
   currency_code: z.string().length(3).optional(),
   stock: z.number().int().min(0),
   image_url: z.string().url().optional(),
+  category_id: z.string().uuid().nullable().optional(),
 });
 
 const productPatchSchema = z.object({
@@ -469,6 +477,7 @@ const productPatchSchema = z.object({
   image_url: z.string().url().nullable().optional(),
   status: z.enum(['active', 'inactive', 'out_of_stock']).optional(),
   sku: z.string().max(64).nullable().optional(),
+  category_id: z.string().uuid().nullable().optional(),
 });
 
 merchantRouter.get('/products', requireAuth, async (req: AuthedRequest, res) => {
@@ -477,6 +486,7 @@ merchantRouter.get('/products', requireAuth, async (req: AuthedRequest, res) => 
   const products = await listProductsForMerchant(req.merchantId!, {
     status: asStr(req.query.status),
     search: asStr(req.query.search),
+    category_id: asStr(req.query.category_id),
   });
   res.json(products);
 });
@@ -492,6 +502,16 @@ merchantRouter.post('/products', requireAuth, async (req: AuthedRequest, res) =>
     res.status(404).json({ error: 'not found' });
     return;
   }
+  // If a category_id was supplied, confirm it belongs to this merchant.
+  // Without this check a merchant could attach products to a category that
+  // belongs to someone else's shop.
+  if (parsed.data.category_id) {
+    const cat = await getCategory(req.merchantId!, parsed.data.category_id);
+    if (!cat) {
+      res.status(400).json({ error: 'category not found' });
+      return;
+    }
+  }
   const product = await createProduct(req.merchantId!, {
     ...parsed.data,
     currency_code: parsed.data.currency_code ?? merchant.currency_code,
@@ -505,12 +525,112 @@ merchantRouter.patch('/products/:id', requireAuth, async (req: AuthedRequest, re
     res.status(400).json({ error: parsed.error.flatten() });
     return;
   }
+  // Same ownership check as on create — if category_id is being set, it
+  // must belong to this merchant. Allow null (clears the category).
+  if (parsed.data.category_id) {
+    const cat = await getCategory(req.merchantId!, parsed.data.category_id);
+    if (!cat) {
+      res.status(400).json({ error: 'category not found' });
+      return;
+    }
+  }
   const updated = await updateProduct(req.merchantId!, String(req.params.id), parsed.data);
   if (!updated) {
     res.status(404).json({ error: 'not found' });
     return;
   }
   res.json(updated);
+});
+
+// ---------------------------------------------------------------------------
+// Product categories
+// ---------------------------------------------------------------------------
+
+const categorySchema = z.object({
+  name: z.string().min(1).max(80),
+});
+
+const categoryPatchSchema = z.object({
+  name: z.string().min(1).max(80).optional(),
+  position: z.number().int().min(0).optional(),
+});
+
+const categoryReorderSchema = z.object({
+  order: z.array(z.object({
+    id: z.string().uuid(),
+    position: z.number().int().min(0),
+  })).max(200),
+});
+
+merchantRouter.get('/categories', requireAuth, async (req: AuthedRequest, res) => {
+  const categories = await listCategoriesForMerchant(req.merchantId!);
+  res.json(categories);
+});
+
+merchantRouter.post('/categories', requireAuth, async (req: AuthedRequest, res) => {
+  const parsed = categorySchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.flatten() });
+    return;
+  }
+  try {
+    const category = await createCategory(req.merchantId!, parsed.data.name.trim());
+    res.status(201).json(category);
+  } catch (err: unknown) {
+    // Postgres unique violation — duplicate name for this merchant
+    if (err && typeof err === 'object' && 'code' in err && (err as { code: string }).code === '23505') {
+      res.status(409).json({ error: 'a category with that name already exists' });
+      return;
+    }
+    throw err;
+  }
+});
+
+merchantRouter.patch('/categories/:id', requireAuth, async (req: AuthedRequest, res) => {
+  const parsed = categoryPatchSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.flatten() });
+    return;
+  }
+  try {
+    const updated = await updateCategory(req.merchantId!, String(req.params.id), {
+      ...parsed.data,
+      ...(parsed.data.name !== undefined ? { name: parsed.data.name.trim() } : {}),
+    });
+    if (!updated) {
+      res.status(404).json({ error: 'not found' });
+      return;
+    }
+    res.json(updated);
+  } catch (err: unknown) {
+    if (err && typeof err === 'object' && 'code' in err && (err as { code: string }).code === '23505') {
+      res.status(409).json({ error: 'a category with that name already exists' });
+      return;
+    }
+    throw err;
+  }
+});
+
+merchantRouter.delete('/categories/:id', requireAuth, async (req: AuthedRequest, res) => {
+  const ok = await deleteCategory(req.merchantId!, String(req.params.id));
+  if (!ok) {
+    res.status(404).json({ error: 'not found' });
+    return;
+  }
+  res.status(204).end();
+});
+
+// Bulk reorder. Accepts an array of {id, position} pairs and applies them
+// in a transaction. The frontend sends the full ordered list after a drag.
+merchantRouter.post('/categories/reorder', requireAuth, async (req: AuthedRequest, res) => {
+  const parsed = categoryReorderSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.flatten() });
+    return;
+  }
+  await reorderCategories(req.merchantId!, parsed.data.order);
+  const categories = await listCategoriesForMerchant(req.merchantId!);
+  res.json(categories);
 });
 
 // ---------------------------------------------------------------------------
@@ -551,32 +671,58 @@ merchantRouter.get('/orders/export.csv', requireAuth, async (req: AuthedRequest,
     status, since, until, limit: 10_000,
   });
 
+  // Shipping address columns are placed right after the buyer so the merchant
+  // can scan an order row and immediately see where it's going. Each field of
+  // the JSONB shipping_address gets its own column — flat columns are far
+  // easier to use in spreadsheets than a single JSON blob.
   const header = [
-    'order_number', 'created_at', 'status', 'buyer', 'currency',
-    'subtotal', 'shipping', 'total', 'paid_at', 'shipped_at',
-    'tracking_carrier', 'tracking_number',
+    'order_number', 'created_at', 'status', 'buyer',
+    'recipient_name', 'address_line_1', 'address_line_2', 'city',
+    'postal_code', 'country', 'phone', 'email',
+    'currency', 'subtotal', 'shipping', 'total',
+    'paid_at', 'shipped_at', 'tracking_carrier', 'tracking_number',
   ];
   const escape = (v: unknown) => {
     if (v === null || v === undefined) return '';
     const s = String(v);
     return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
   };
+  // Excel and Numbers both read CRLF more reliably than bare LF.
   const lines = [header.join(',')];
   for (const o of orders) {
     const buyer = o.buyer_telegram_username
       ? `@${o.buyer_telegram_username}`
       : o.buyer_telegram_first_name ?? '';
+    // shipping_address is stored as JSONB; the pg driver parses it for us.
+    // Defensive guard: if it's somehow a string (older rows, manual edits),
+    // try to parse, otherwise treat as missing.
+    let addr = o.shipping_address as ShippingAddress | null;
+    if (typeof addr === 'string') {
+      try { addr = JSON.parse(addr); } catch { addr = null; }
+    }
     lines.push(
       [
-        o.order_number, o.created_at, o.status, buyer, o.currency_code,
-        o.subtotal, o.shipping, o.total, o.paid_at ?? '', o.shipped_at ?? '',
+        o.order_number, o.created_at, o.status, buyer,
+        addr?.full_name ?? '',
+        addr?.line_1 ?? '',
+        addr?.line_2 ?? '',
+        addr?.city ?? '',
+        addr?.postal_code ?? '',
+        addr?.country ?? '',
+        addr?.phone ?? '',
+        addr?.email ?? '',
+        o.currency_code,
+        o.subtotal, o.shipping, o.total,
+        o.paid_at ?? '', o.shipped_at ?? '',
         o.tracking_carrier ?? '', o.tracking_number ?? '',
       ].map(escape).join(',')
     );
   }
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
   res.setHeader('Content-Disposition', `attachment; filename="orders.csv"`);
-  res.send(lines.join('\n'));
+  // CRLF line endings — far more compatible with Excel and Numbers
+  // than the bare LF the previous version used.
+  res.send(lines.join('\r\n'));
 });
 
 merchantRouter.get('/orders/:id', requireAuth, async (req: AuthedRequest, res) => {

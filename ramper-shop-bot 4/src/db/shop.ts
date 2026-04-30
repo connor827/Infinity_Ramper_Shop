@@ -1,6 +1,6 @@
 import pg from 'pg';
 import { query, withTransaction } from './pool.js';
-import type { Product, Buyer, Order, CartItem, ShippingAddress } from '../types/index.js';
+import type { Product, Buyer, Order, CartItem, ShippingAddress, ProductCategory, ProductCategoryWithCount } from '../types/index.js';
 
 // ------------------------------------------------------------------
 // Products
@@ -18,9 +18,10 @@ export async function listActiveProducts(merchantId: string): Promise<Product[]>
 
 // List ALL products for the merchant dashboard — includes inactive, out-of-stock.
 // Optional status filter: 'active' | 'inactive' | 'out_of_stock' | undefined (all).
+// Optional category_id filter: a UUID, or 'uncategorised' for products with no category.
 export async function listProductsForMerchant(
   merchantId: string,
-  opts: { status?: string; search?: string } = {}
+  opts: { status?: string; search?: string; category_id?: string } = {}
 ): Promise<Product[]> {
   const values: unknown[] = [merchantId];
   const where: string[] = ['merchant_id = $1'];
@@ -31,6 +32,14 @@ export async function listProductsForMerchant(
   if (opts.search && opts.search.trim()) {
     values.push(`%${opts.search.trim()}%`);
     where.push(`name ILIKE $${values.length}`);
+  }
+  if (opts.category_id) {
+    if (opts.category_id === 'uncategorised') {
+      where.push(`category_id IS NULL`);
+    } else {
+      values.push(opts.category_id);
+      where.push(`category_id = $${values.length}`);
+    }
   }
   const { rows } = await query<Product>(
     `SELECT * FROM products
@@ -53,6 +62,7 @@ export async function updateProduct(
     image_url: string | null;
     status: 'active' | 'inactive' | 'out_of_stock';
     sku: string | null;
+    category_id: string | null;
   }>
 ): Promise<Product | null> {
   const fields: string[] = [];
@@ -98,11 +108,12 @@ export async function createProduct(
     currency_code: string;
     stock: number;
     image_url?: string;
+    category_id?: string | null;
   }
 ): Promise<Product> {
   const { rows } = await query<Product>(
-    `INSERT INTO products (merchant_id, name, description, price, currency_code, stock, image_url)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)
+    `INSERT INTO products (merchant_id, name, description, price, currency_code, stock, image_url, category_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
      RETURNING *`,
     [
       merchantId,
@@ -112,9 +123,132 @@ export async function createProduct(
       data.currency_code,
       data.stock,
       data.image_url ?? null,
+      data.category_id ?? null,
     ]
   );
   return rows[0];
+}
+
+// ------------------------------------------------------------------
+// Product categories
+// ------------------------------------------------------------------
+
+// List all categories for a merchant, ordered by position then name.
+// Includes a count of products in each category.
+export async function listCategoriesForMerchant(
+  merchantId: string
+): Promise<ProductCategoryWithCount[]> {
+  const { rows } = await query<ProductCategoryWithCount>(
+    `SELECT c.*, COALESCE(p.product_count, 0)::int AS product_count
+       FROM product_categories c
+       LEFT JOIN (
+         SELECT category_id, COUNT(*) AS product_count
+           FROM products
+          WHERE merchant_id = $1 AND category_id IS NOT NULL
+          GROUP BY category_id
+       ) p ON p.category_id = c.id
+      WHERE c.merchant_id = $1
+      ORDER BY c.position ASC, c.name ASC`,
+    [merchantId]
+  );
+  return rows;
+}
+
+// Create a new category. Position defaults to "after the last existing one"
+// so newly-added categories appear at the bottom of the list by default.
+export async function createCategory(
+  merchantId: string,
+  name: string
+): Promise<ProductCategory> {
+  return await withTransaction(async (client) => {
+    const { rows: posRows } = await client.query<{ next_pos: number }>(
+      `SELECT COALESCE(MAX(position), -1) + 1 AS next_pos
+         FROM product_categories
+        WHERE merchant_id = $1`,
+      [merchantId]
+    );
+    const nextPos = posRows[0]?.next_pos ?? 0;
+    const { rows } = await client.query<ProductCategory>(
+      `INSERT INTO product_categories (merchant_id, name, position)
+       VALUES ($1, $2, $3)
+       RETURNING *`,
+      [merchantId, name, nextPos]
+    );
+    return rows[0];
+  });
+}
+
+// Get a single category and confirm it belongs to the merchant.
+export async function getCategory(
+  merchantId: string,
+  categoryId: string
+): Promise<ProductCategory | null> {
+  const { rows } = await query<ProductCategory>(
+    `SELECT * FROM product_categories WHERE id = $1 AND merchant_id = $2`,
+    [categoryId, merchantId]
+  );
+  return rows[0] ?? null;
+}
+
+// Apply a partial update to a category. Only name and position are updatable.
+export async function updateCategory(
+  merchantId: string,
+  categoryId: string,
+  patch: Partial<{ name: string; position: number }>
+): Promise<ProductCategory | null> {
+  const fields: string[] = [];
+  const values: unknown[] = [];
+  let i = 1;
+  for (const [key, value] of Object.entries(patch)) {
+    if (value === undefined) continue;
+    fields.push(`${key} = $${i++}`);
+    values.push(value);
+  }
+  if (fields.length === 0) {
+    return getCategory(merchantId, categoryId);
+  }
+  values.push(categoryId, merchantId);
+  const { rows } = await query<ProductCategory>(
+    `UPDATE product_categories
+        SET ${fields.join(', ')}
+      WHERE id = $${i++} AND merchant_id = $${i}
+      RETURNING *`,
+    values
+  );
+  return rows[0] ?? null;
+}
+
+// Delete a category. ON DELETE SET NULL on the FK in products takes care of
+// detaching products — they fall back to "uncategorised".
+export async function deleteCategory(
+  merchantId: string,
+  categoryId: string
+): Promise<boolean> {
+  const { rowCount } = await query(
+    `DELETE FROM product_categories WHERE id = $1 AND merchant_id = $2`,
+    [categoryId, merchantId]
+  );
+  return (rowCount ?? 0) > 0;
+}
+
+// Reorder several categories at once. Takes a list of {id, position} pairs
+// and applies them in a single transaction. Any IDs not belonging to the
+// merchant are silently skipped.
+export async function reorderCategories(
+  merchantId: string,
+  order: Array<{ id: string; position: number }>
+): Promise<void> {
+  if (order.length === 0) return;
+  await withTransaction(async (client) => {
+    for (const item of order) {
+      await client.query(
+        `UPDATE product_categories
+            SET position = $1
+          WHERE id = $2 AND merchant_id = $3`,
+        [item.position, item.id, merchantId]
+      );
+    }
+  });
 }
 
 // ------------------------------------------------------------------

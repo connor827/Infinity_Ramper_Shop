@@ -10,6 +10,7 @@ import {
   removeCartItem,
   createOrderFromCart,
   attachRamperToOrder,
+  listCategoriesForMerchant,
 } from '../db/shop.js';
 import { ramperClient } from '../payments/ramper.js';
 import { logger } from '../config/logger.js';
@@ -67,6 +68,12 @@ export function registerHandlers(bot: Bot<BotContext>): void {
   bot.callbackQuery('menu:home', async (ctx) => {
     await safeAnswer(ctx);
     await safeEdit(ctx, `Welcome to ${ctx.merchant.store_name}.`, mainMenu());
+  });
+
+  // Section headers in the catalogue are inline buttons with this callback.
+  // We just acknowledge the tap so the loading spinner clears.
+  bot.callbackQuery('noop', async (ctx) => {
+    await safeAnswer(ctx);
   });
 
   // ----- Product view -----------------------------------------------------
@@ -285,9 +292,55 @@ async function showCatalogue(ctx: BotContext): Promise<void> {
     return;
   }
 
-  const kb = new InlineKeyboard();
+  // Pull the merchant's category list so we can render in the right order.
+  // Categories are sorted by position then name in the DB layer; we just
+  // build a lookup and bucket products into them.
+  const categories = await listCategoriesForMerchant(ctx.merchant.id);
+
+  // Bucket products: one bucket per category in order, plus an "uncategorised"
+  // bucket at the end for products with category_id = null OR products whose
+  // category was deleted (FK SET NULL takes care of that).
+  type Bucket = { name: string; products: typeof products };
+  const buckets: Bucket[] = categories.map((c) => ({ name: c.name, products: [] }));
+  const buckByCatId = new Map<string, Bucket>();
+  categories.forEach((c, i) => buckByCatId.set(c.id, buckets[i]));
+  const uncategorised: Bucket = { name: 'Uncategorised', products: [] };
+
   for (const p of products) {
-    kb.text(`${p.name} - ${formatMoney(p.price, p.currency_code)}`, `product:${p.id}`).row();
+    const bucket = p.category_id ? buckByCatId.get(p.category_id) : undefined;
+    if (bucket) {
+      bucket.products.push(p);
+    } else {
+      uncategorised.products.push(p);
+    }
+  }
+
+  // Only show the Uncategorised header if there are actually products in it.
+  const finalBuckets = [...buckets.filter((b) => b.products.length > 0)];
+  if (uncategorised.products.length > 0) finalBuckets.push(uncategorised);
+
+  // Edge case: every category is empty AND every product has a deleted/missing
+  // category — shouldn't happen, but if all buckets are empty, fall back to a
+  // flat list so the buyer still sees something.
+  if (finalBuckets.length === 0) {
+    const kb = new InlineKeyboard();
+    for (const p of products) {
+      kb.text(`${p.name} — ${formatMoney(p.price, p.currency_code)}`, `product:${p.id}`).row();
+    }
+    kb.text('back', 'menu:home');
+    await safeEdit(ctx, 'Shop', kb);
+    return;
+  }
+
+  const kb = new InlineKeyboard();
+  for (const bucket of finalBuckets) {
+    // Section header — visually a button but tapping it does nothing.
+    // We surround the name with em-dashes to make it look like a separator
+    // rather than a tappable item.
+    kb.text(`— ${bucket.name} —`, 'noop').row();
+    for (const p of bucket.products) {
+      kb.text(`${p.name} — ${formatMoney(p.price, p.currency_code)}`, `product:${p.id}`).row();
+    }
   }
   kb.text('back', 'menu:home');
 

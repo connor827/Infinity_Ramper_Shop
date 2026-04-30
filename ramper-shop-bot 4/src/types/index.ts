@@ -33,8 +33,23 @@ export interface Product {
   stock: number;
   weight_grams: number | null;
   status: 'active' | 'inactive' | 'out_of_stock';
+  category_id: string | null;
   created_at: Date;
   updated_at: Date;
+}
+
+export interface ProductCategory {
+  id: string;
+  merchant_id: string;
+  name: string;
+  position: number;
+  created_at: Date;
+  updated_at: Date;
+}
+
+// Returned by listCategoriesForMerchant — joins on a count of products.
+export interface ProductCategoryWithCount extends ProductCategory {
+  product_count: number;
 }
 
 export interface Buyer {

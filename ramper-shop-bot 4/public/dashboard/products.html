@@ -99,6 +99,69 @@
   .status-inactive { background: var(--ink-faint); opacity: 0.5; }
   .mono { font-family: 'IBM Plex Mono', monospace; font-size: 13px; }
   .currency-prefix { color: var(--ink-faint); font-weight: 400; margin-right: 2px; }
+
+  /* Category management drawer */
+  .cat-row {
+    display: grid;
+    grid-template-columns: 24px 1fr auto auto;
+    gap: 12px;
+    align-items: center;
+    padding: 12px 14px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    margin-bottom: 8px;
+    transition: border-color 120ms ease, background 120ms ease;
+  }
+  .cat-row.dragging { opacity: 0.4; }
+  .cat-row.drag-over { border-color: var(--accent); background: var(--bg-warm); }
+  .cat-handle {
+    cursor: grab;
+    color: var(--ink-faint);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 14px;
+    user-select: none;
+    line-height: 1;
+    text-align: center;
+  }
+  .cat-handle:active { cursor: grabbing; }
+  .cat-name-display {
+    color: var(--ink);
+    font-weight: 500;
+  }
+  .cat-name-display .count {
+    color: var(--ink-faint);
+    font-weight: 400;
+    margin-left: 6px;
+    font-size: 12px;
+  }
+  .cat-name-input {
+    background: var(--bg);
+    border: 1px solid var(--accent);
+    color: var(--ink);
+    font-family: 'Inter', sans-serif;
+    font-size: 14px;
+    padding: 6px 10px;
+    border-radius: 4px;
+    outline: none;
+    width: 100%;
+  }
+  .cat-new-row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 8px;
+    margin-bottom: 16px;
+    padding: 14px;
+    background: var(--bg-warm);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+  }
+  .cat-empty {
+    text-align: center;
+    padding: 32px 16px;
+    color: var(--ink-faint);
+    font-size: 13px;
+  }
 </style>
 </head>
 <body>
@@ -128,6 +191,7 @@
         <div class="meta" id="products-meta">Loading…</div>
       </div>
       <div class="actions">
+        <button class="btn btn-secondary btn-sm" id="manage-cats-btn">Manage categories</button>
         <button class="btn btn-primary btn-sm" id="add-btn">+ New product</button>
       </div>
     </div>
@@ -136,6 +200,10 @@
       <input type="search" id="f-search" placeholder="Search by name…"/>
       <select id="f-status">
         ${STATUSES.map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}
+      </select>
+      <select id="f-category">
+        <option value="">All categories</option>
+        <option value="uncategorised">Uncategorised</option>
       </select>
       <button class="btn btn-ghost btn-sm" id="reset-btn">Reset</button>
     </div>
@@ -154,12 +222,25 @@
       <div class="drawer-body" id="d-body"></div>
       <div class="drawer-footer" id="d-footer" style="display:none"></div>
     </div>
+
+    <div class="drawer-overlay" id="cat-drawer-overlay"></div>
+    <div class="drawer" id="cat-drawer" aria-hidden="true">
+      <div class="drawer-head">
+        <div>
+          <span class="eyebrow plain">Catalogue</span>
+          <h2 class="display mt-1">Manage categories</h2>
+        </div>
+        <button class="btn btn-ghost btn-sm" id="cat-close">Close ×</button>
+      </div>
+      <div class="drawer-body" id="cat-body"></div>
+    </div>
   `;
 
   const SYMBOLS = { USD: '$', EUR: '€', GBP: '£', CAD: 'C$', AUD: 'A$', INR: '₹' };
 
   const store = {
     products: [],
+    categories: [],
     currency: 'USD',
     currencySymbol: '$',
     editingId: null, // null = new, string = existing
@@ -168,6 +249,7 @@
   const state = {
     search: '',
     status: '',
+    category_id: '',
   };
 
   // ---------- Formatting helpers ----------
@@ -204,6 +286,7 @@
     const params = new URLSearchParams();
     if (state.search) params.set('search', state.search);
     if (state.status) params.set('status', state.status);
+    if (state.category_id) params.set('category_id', state.category_id);
     const qs = params.toString();
     const url = '/products' + (qs ? '?' + qs : '');
     try {
@@ -221,12 +304,44 @@
     }
   }
 
+  async function loadCategories() {
+    try {
+      store.categories = await API('GET', '/categories');
+    } catch (err) {
+      // Non-fatal — products page still works without categories.
+      console.error('Failed to load categories:', err);
+      store.categories = [];
+    }
+    refreshCategoryFilter();
+  }
+
+  // Rebuild the category filter dropdown with the current list of categories.
+  // Preserves the currently-selected value if it's still valid.
+  function refreshCategoryFilter() {
+    const sel = document.getElementById('f-category');
+    if (!sel) return;
+    const current = state.category_id;
+    const opts = ['<option value="">All categories</option>'];
+    if (store.categories.length > 0) {
+      opts.push('<option value="uncategorised">Uncategorised</option>');
+      for (const c of store.categories) {
+        opts.push(`<option value="${escapeAttr(c.id)}">${escapeHtml(c.name)} (${c.product_count})</option>`);
+      }
+    }
+    sel.innerHTML = opts.join('');
+    // Re-apply the previously selected filter if it still exists in the list
+    const stillExists = current === '' || current === 'uncategorised'
+      || store.categories.some((c) => c.id === current);
+    sel.value = stillExists ? current : '';
+    if (!stillExists) state.category_id = '';
+  }
+
   // ---------- Render ----------
   function render() {
     const wrap = document.getElementById('products-wrap');
     const meta = document.getElementById('products-meta');
     const products = store.products;
-    const isFiltered = state.search || state.status;
+    const isFiltered = state.search || state.status || state.category_id;
 
     const totalLowStock = products.filter(p => p.status === 'active' && p.stock > 0 && p.stock <= 5).length;
     const totalOut = products.filter(p => (p.status === 'active' && p.stock === 0) || p.status === 'out_of_stock').length;
@@ -275,6 +390,12 @@
       const statusDotClass =
         p.status === 'active' && p.stock > 0 ? 'status-active' :
         p.status === 'inactive' ? 'status-inactive' : 'status-out';
+      // Look up the category name for the cell. If category_id is null or
+      // points at a deleted category, show a faint dash.
+      const cat = p.category_id ? store.categories.find((c) => c.id === p.category_id) : null;
+      const categoryCell = cat
+        ? `<span style="color:var(--ink-mid)">${escapeHtml(cat.name)}</span>`
+        : `<span style="color:var(--ink-faint)">—</span>`;
       return `
         <tr class="products-row" data-id="${p.id}">
           <td style="width:60px;padding:10px 12px">
@@ -288,6 +409,7 @@
             <div style="font-weight:500;color:var(--ink);margin-bottom:2px">${escapeHtml(p.name)}</div>
             ${p.sku ? `<div class="mono" style="color:var(--ink-faint)">${escapeHtml(p.sku)}</div>` : ''}
           </td>
+          <td>${categoryCell}</td>
           <td class="mono"><span class="currency-prefix">${SYMBOLS[p.currency_code] || p.currency_code}</span>${Number(p.price).toFixed(2)}</td>
           <td class="${stockClass}">${p.stock}</td>
           <td><span class="status-dot ${statusDotClass}"></span>${statusLabel}</td>
@@ -302,6 +424,7 @@
           <tr>
             <th></th>
             <th>Name</th>
+            <th>Category</th>
             <th>Price</th>
             <th>Stock</th>
             <th>Status</th>
@@ -332,6 +455,7 @@
       image_url: '',
       status: 'active',
       sku: '',
+      category_id: '',
     });
     openDrawer();
   }
@@ -350,6 +474,7 @@
       image_url: p.image_url || '',
       status: p.status || 'active',
       sku: p.sku || '',
+      category_id: p.category_id || '',
     });
     openDrawer();
   }
@@ -395,6 +520,25 @@
         <div class="hint">Host your image anywhere with a public URL — Imgur, Cloudinary, a Google Drive public link. Paste the direct image link here.</div>
       </div>
 
+      <div class="form-row">
+        <label for="p-category">Category</label>
+        <div style="display:flex;gap:8px;align-items:stretch">
+          <select id="p-category" style="flex:1">
+            <option value="">Uncategorised</option>
+            ${store.categories.map((c) =>
+              `<option value="${escapeAttr(c.id)}" ${v.category_id === c.id ? 'selected' : ''}>${escapeHtml(c.name)}</option>`
+            ).join('')}
+          </select>
+          <button class="btn btn-secondary btn-sm" type="button" id="p-cat-new" style="white-space:nowrap">+ New</button>
+        </div>
+        <div id="p-cat-new-row" style="display:none;margin-top:8px;gap:8px">
+          <input type="text" id="p-cat-new-name" placeholder="Category name" maxlength="80"/>
+          <button class="btn btn-primary btn-sm" type="button" id="p-cat-new-save">Add</button>
+          <button class="btn btn-ghost btn-sm" type="button" id="p-cat-new-cancel">Cancel</button>
+        </div>
+        <div class="hint">Buyers see categories as section headers when browsing in the bot.</div>
+      </div>
+
       <div class="form-row-2">
         <div class="form-row">
           <label for="p-sku">SKU</label>
@@ -432,6 +576,47 @@
       }
     });
 
+    // Inline "+ New" category creator. Tapping the button reveals a small row
+    // with an input + Add/Cancel. On success the new category is added to the
+    // dropdown and pre-selected.
+    const newBtn = document.getElementById('p-cat-new');
+    const newRow = document.getElementById('p-cat-new-row');
+    const newName = document.getElementById('p-cat-new-name');
+    const newSave = document.getElementById('p-cat-new-save');
+    const newCancel = document.getElementById('p-cat-new-cancel');
+    function showNewCatRow(show) {
+      newRow.style.display = show ? 'flex' : 'none';
+      if (show) {
+        newName.value = '';
+        newName.focus();
+      }
+    }
+    newBtn.addEventListener('click', () => showNewCatRow(true));
+    newCancel.addEventListener('click', () => showNewCatRow(false));
+    newSave.addEventListener('click', async () => {
+      const nm = newName.value.trim();
+      if (!nm) return Toast.err('Category name is required.');
+      newSave.disabled = true;
+      try {
+        const created = await API('POST', '/categories', { name: nm });
+        await loadCategories();
+        // Re-render the dropdown options inline so we don't lose the rest of
+        // the form's state (which a full renderForm rebuild would).
+        const sel = document.getElementById('p-category');
+        const opts = ['<option value="">Uncategorised</option>'];
+        for (const c of store.categories) {
+          opts.push(`<option value="${escapeAttr(c.id)}" ${c.id === created.id ? 'selected' : ''}>${escapeHtml(c.name)}</option>`);
+        }
+        sel.innerHTML = opts.join('');
+        showNewCatRow(false);
+        Toast.ok('Category added.');
+      } catch (err) {
+        Toast.err(err.message || 'Could not create category.');
+      } finally {
+        newSave.disabled = false;
+      }
+    });
+
     document.getElementById('d-save').addEventListener('click', save);
     document.getElementById('d-cancel').addEventListener('click', closeDrawer);
 
@@ -453,6 +638,7 @@
     const image_url = document.getElementById('p-image').value.trim();
     const sku = document.getElementById('p-sku').value.trim();
     const status = document.getElementById('p-status').value;
+    const category_id = document.getElementById('p-category').value || null;
 
     if (!name) return Toast.err('Name is required.');
     const price = parseFloat(priceStr);
@@ -472,6 +658,7 @@
         const payload = { name, price, stock };
         if (description) payload.description = description;
         if (image_url) payload.image_url = image_url;
+        if (category_id) payload.category_id = category_id;
         await API('POST', '/products', payload);
         Toast.ok('Product created.');
       } else {
@@ -483,11 +670,13 @@
           image_url: image_url || null,
           sku: sku || null,
           status,
+          category_id,
         };
         await API('PATCH', '/products/' + encodeURIComponent(store.editingId), payload);
         Toast.ok('Product updated.');
       }
       closeDrawer();
+      await loadCategories();
       await loadProducts();
     } catch (err) {
       console.error('Save failed:', err);
@@ -511,13 +700,219 @@
     document.getElementById('d-footer').style.display = 'none';
   }
 
+  // ---------- Manage categories drawer ----------
+
+  function openCatDrawer() {
+    document.getElementById('cat-drawer').classList.add('open');
+    document.getElementById('cat-drawer-overlay').classList.add('open');
+    document.getElementById('cat-drawer').setAttribute('aria-hidden', 'false');
+    renderCatDrawer();
+  }
+  function closeCatDrawer() {
+    document.getElementById('cat-drawer').classList.remove('open');
+    document.getElementById('cat-drawer-overlay').classList.remove('open');
+    document.getElementById('cat-drawer').setAttribute('aria-hidden', 'true');
+  }
+
+  // Render the body of the manage-categories drawer. Called every time the
+  // list changes (rename, add, delete, reorder).
+  function renderCatDrawer() {
+    const body = document.getElementById('cat-body');
+    const cats = store.categories;
+
+    const newRowHtml = `
+      <div class="cat-new-row">
+        <input type="text" id="cat-new-name" placeholder="New category name" maxlength="80"/>
+        <button class="btn btn-primary btn-sm" id="cat-new-add">+ Add category</button>
+      </div>
+    `;
+
+    if (cats.length === 0) {
+      body.innerHTML = newRowHtml + `
+        <div class="cat-empty">
+          <em>No categories yet. Add one above to start organising products.</em>
+        </div>
+      `;
+    } else {
+      const rows = cats.map((c) => `
+        <div class="cat-row" draggable="true" data-id="${escapeAttr(c.id)}">
+          <span class="cat-handle" title="Drag to reorder">⋮⋮</span>
+          <div class="cat-name" data-name>
+            <span class="cat-name-display">
+              ${escapeHtml(c.name)}
+              <span class="count">${c.product_count} ${c.product_count === 1 ? 'product' : 'products'}</span>
+            </span>
+          </div>
+          <button class="btn btn-ghost btn-sm" data-rename data-id="${escapeAttr(c.id)}">Rename</button>
+          <button class="btn btn-ghost btn-sm" data-delete data-id="${escapeAttr(c.id)}" data-name="${escapeAttr(c.name)}" data-count="${c.product_count}">Delete</button>
+        </div>
+      `).join('');
+      body.innerHTML = newRowHtml + `<div id="cat-list">${rows}</div>`;
+    }
+
+    // --- New category form ---
+    const addBtn = document.getElementById('cat-new-add');
+    const addInput = document.getElementById('cat-new-name');
+    async function handleAdd() {
+      const nm = addInput.value.trim();
+      if (!nm) return Toast.err('Category name is required.');
+      addBtn.disabled = true;
+      try {
+        await API('POST', '/categories', { name: nm });
+        await loadCategories();
+        renderCatDrawer();
+        Toast.ok('Category added.');
+      } catch (err) {
+        Toast.err(err.message || 'Could not create category.');
+      } finally {
+        addBtn.disabled = false;
+      }
+    }
+    addBtn.addEventListener('click', handleAdd);
+    addInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); handleAdd(); }
+    });
+
+    // --- Rename ---
+    body.querySelectorAll('[data-rename]').forEach((btn) => {
+      btn.addEventListener('click', () => startRename(btn.dataset.id));
+    });
+
+    // --- Delete ---
+    body.querySelectorAll('[data-delete]').forEach((btn) => {
+      btn.addEventListener('click', () => deleteCategoryRow(btn.dataset.id, btn.dataset.name, parseInt(btn.dataset.count, 10) || 0));
+    });
+
+    // --- Drag and drop reorder ---
+    wireDragReorder();
+  }
+
+  function startRename(id) {
+    const cat = store.categories.find((c) => c.id === id);
+    if (!cat) return;
+    const row = document.querySelector(`.cat-row[data-id="${CSS.escape(id)}"]`);
+    if (!row) return;
+    const nameCell = row.querySelector('[data-name]');
+    nameCell.innerHTML = `<input type="text" class="cat-name-input" value="${escapeAttr(cat.name)}" maxlength="80"/>`;
+    const input = nameCell.querySelector('input');
+    input.focus();
+    input.select();
+
+    async function commit() {
+      const newName = input.value.trim();
+      if (!newName || newName === cat.name) {
+        renderCatDrawer();
+        return;
+      }
+      try {
+        await API('PATCH', '/categories/' + encodeURIComponent(id), { name: newName });
+        await loadCategories();
+        renderCatDrawer();
+        Toast.ok('Category renamed.');
+      } catch (err) {
+        Toast.err(err.message || 'Could not rename category.');
+        renderCatDrawer();
+      }
+    }
+    function cancel() { renderCatDrawer(); }
+
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); commit(); }
+      else if (e.key === 'Escape') { e.preventDefault(); cancel(); }
+    });
+    input.addEventListener('blur', commit);
+  }
+
+  async function deleteCategoryRow(id, name, count) {
+    const msg = count > 0
+      ? `Delete "${name}"? The ${count} ${count === 1 ? 'product' : 'products'} in this category will become uncategorised.`
+      : `Delete "${name}"?`;
+    if (!window.confirm(msg)) return;
+    try {
+      await API('DELETE', '/categories/' + encodeURIComponent(id));
+      await loadCategories();
+      renderCatDrawer();
+      // Refresh the products view too — affected rows will show a dash now.
+      await loadProducts();
+      Toast.ok('Category deleted.');
+    } catch (err) {
+      Toast.err(err.message || 'Could not delete category.');
+    }
+  }
+
+  // HTML5 drag-and-drop reorder — no library needed. We track a "dragging"
+  // row and a "drag-over" target; on drop we reshuffle the in-memory list,
+  // re-render, and POST the new order to the server.
+  let dragSrcId = null;
+  function wireDragReorder() {
+    const rows = document.querySelectorAll('#cat-list .cat-row');
+    rows.forEach((row) => {
+      row.addEventListener('dragstart', (e) => {
+        dragSrcId = row.dataset.id;
+        row.classList.add('dragging');
+        // Required for Firefox to actually fire drag events
+        try { e.dataTransfer.setData('text/plain', dragSrcId); } catch {}
+        e.dataTransfer.effectAllowed = 'move';
+      });
+      row.addEventListener('dragend', () => {
+        row.classList.remove('dragging');
+        document.querySelectorAll('.cat-row.drag-over').forEach((r) => r.classList.remove('drag-over'));
+      });
+      row.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        if (row.dataset.id !== dragSrcId) row.classList.add('drag-over');
+      });
+      row.addEventListener('dragleave', () => row.classList.remove('drag-over'));
+      row.addEventListener('drop', async (e) => {
+        e.preventDefault();
+        row.classList.remove('drag-over');
+        const targetId = row.dataset.id;
+        if (!dragSrcId || dragSrcId === targetId) return;
+
+        // Reorder in-memory: pull source out, insert before target.
+        const cats = store.categories.slice();
+        const srcIdx = cats.findIndex((c) => c.id === dragSrcId);
+        const tgtIdx = cats.findIndex((c) => c.id === targetId);
+        if (srcIdx === -1 || tgtIdx === -1) return;
+        const [moved] = cats.splice(srcIdx, 1);
+        // If we removed something earlier in the list, target index shifts left
+        const insertAt = srcIdx < tgtIdx ? tgtIdx - 1 : tgtIdx;
+        cats.splice(insertAt, 0, moved);
+
+        // Optimistic re-render then persist.
+        store.categories = cats;
+        renderCatDrawer();
+        try {
+          await API('POST', '/categories/reorder', {
+            order: cats.map((c, i) => ({ id: c.id, position: i })),
+          });
+          await loadCategories();
+          renderCatDrawer();
+        } catch (err) {
+          Toast.err(err.message || 'Could not save new order.');
+          await loadCategories();
+          renderCatDrawer();
+        }
+      });
+    });
+  }
+
   // ---------- Event wiring ----------
   document.getElementById('add-btn').addEventListener('click', openNew);
+  document.getElementById('manage-cats-btn').addEventListener('click', openCatDrawer);
   document.getElementById('d-close').addEventListener('click', closeDrawer);
   document.getElementById('drawer-overlay').addEventListener('click', closeDrawer);
+  document.getElementById('cat-close').addEventListener('click', closeCatDrawer);
+  document.getElementById('cat-drawer-overlay').addEventListener('click', closeCatDrawer);
 
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && document.getElementById('drawer').classList.contains('open')) {
+    if (e.key !== 'Escape') return;
+    // Close whichever drawer is open. If both are open (cat-drawer was opened
+    // from inside the product drawer), close the topmost one.
+    if (document.getElementById('cat-drawer').classList.contains('open')) {
+      closeCatDrawer();
+    } else if (document.getElementById('drawer').classList.contains('open')) {
       closeDrawer();
     }
   });
@@ -534,15 +929,24 @@
     state.status = e.target.value;
     loadProducts();
   });
+  document.getElementById('f-category').addEventListener('change', (e) => {
+    state.category_id = e.target.value;
+    loadProducts();
+  });
   document.getElementById('reset-btn').addEventListener('click', () => {
     state.search = '';
     state.status = '';
+    state.category_id = '';
     document.getElementById('f-search').value = '';
     document.getElementById('f-status').value = '';
+    document.getElementById('f-category').value = '';
     loadProducts();
   });
 
   await loadMe();
+  // Load categories first so the products render can show the right names
+  // in the Category column on first paint.
+  await loadCategories();
   await loadProducts();
 })();
 </script>
