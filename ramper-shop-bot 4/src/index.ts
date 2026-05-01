@@ -46,7 +46,7 @@ const publicDir = publicCandidates.find(existsSync) ?? publicCandidates[0];
 logger.info({ publicDir }, 'serving dashboard from');
 
 // Clean URLs for dashboard pages: /dashboard/orders -> dashboard/orders.html
-const DASHBOARD_PAGES = ['orders', 'products', 'customers', 'bot', 'settings'];
+const DASHBOARD_PAGES = ['orders', 'products', 'shipping', 'customers', 'bot', 'settings'];
 app.get('/dashboard', (_req, res) => {
   res.sendFile(path.join(publicDir, 'dashboard', 'index.html'));
 });
