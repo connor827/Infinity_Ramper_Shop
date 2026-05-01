@@ -24,20 +24,36 @@ export async function query<T = any>(
 /**
  * Run a function inside a transaction. If the callback throws, the transaction
  * is rolled back. Otherwise it's committed.
+ *
+ * Defensive: a rollback that itself throws (because the connection is in
+ * a bad state, e.g. a failed DDL or a network blip mid-statement) must
+ * not prevent the client from being released back to the pool. Without
+ * this guard, repeated transaction failures slowly leak clients until
+ * the pool is exhausted and every subsequent request hangs forever
+ * waiting for `pool.connect()`.
  */
 export async function withTransaction<T>(
   fn: (client: pg.PoolClient) => Promise<T>
 ): Promise<T> {
   const client = await pool.connect();
+  let released = false;
   try {
     await client.query('BEGIN');
     const result = await fn(client);
     await client.query('COMMIT');
     return result;
   } catch (err) {
-    await client.query('ROLLBACK');
+    try {
+      await client.query('ROLLBACK');
+    } catch (rollbackErr) {
+      // The connection is unusable. Destroy it so the pool replaces it
+      // with a fresh one rather than handing it back to the next caller.
+      console.error('rollback failed; destroying client', rollbackErr);
+      client.release(rollbackErr as Error);
+      released = true;
+    }
     throw err;
   } finally {
-    client.release();
+    if (!released) client.release();
   }
 }
