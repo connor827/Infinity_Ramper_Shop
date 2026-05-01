@@ -14,11 +14,19 @@ export const pool = new Pool({
 // in 'idle in transaction') can hang forever, slowly exhausting the pool
 // until every request blocks on pool.connect(). 15s is plenty for any
 // well-behaved query in this app.
+//
+// Note: the two SETs must run sequentially. node-postgres clients can only
+// execute one query at a time; firing both in parallel causes the second
+// to throw mid-flight and flood the process with unhandled rejections.
 pool.on('connect', (client) => {
-  client.query("SET statement_timeout = '15s'").catch(() => {
-    /* non-fatal — connection will still work, just less protected */
-  });
-  client.query("SET idle_in_transaction_session_timeout = '30s'").catch(() => {});
+  (async () => {
+    try {
+      await client.query("SET statement_timeout = '15s'");
+      await client.query("SET idle_in_transaction_session_timeout = '30s'");
+    } catch {
+      /* non-fatal — connection will still work, just less protected */
+    }
+  })();
 });
 
 pool.on('error', (err) => {
