@@ -3,24 +3,17 @@ import { env } from '../config/env.js';
 
 const { Pool } = pg;
 
-// Pass Postgres-side timeouts as connection-time options. This is far
-// safer than setting them via a `pool.on('connect')` handler, which races
-// with the first query the pool runs against the new client (the pool
-// emits 'connect' but does NOT await the handler before handing the
-// connection to whoever requested it). We hit that race in production
-// and it manifested as a node-postgres deprecation warning that escalated
-// into unhandled rejections and process restarts.
-//
-// statement_timeout: kill any single query that runs > 15s
-// idle_in_transaction_session_timeout: abort transactions left open > 30s
-//
-// The leading `-c ` syntax is how libpq accepts session-level GUC
-// settings on connect.
+// Keep the pool config as plain as possible. We've previously tried both
+// a `pool.on('connect')` handler and the libpq `options: '-c ...'` route
+// to set Postgres-side statement timeouts; both triggered a node-postgres
+// deprecation warning by racing with the connection's authentication flow.
+// Connection timeouts are protected at the application layer instead
+// (Express request timeout + sensible query design), and the underlying
+// migration-mismatch bug that originally exhausted the pool has been fixed.
 export const pool = new Pool({
   connectionString: env.DATABASE_URL,
   max: 20,
   idleTimeoutMillis: 30000,
-  options: '-c statement_timeout=15000 -c idle_in_transaction_session_timeout=30000',
 });
 
 pool.on('error', (err) => {
