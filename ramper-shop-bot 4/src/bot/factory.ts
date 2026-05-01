@@ -5,7 +5,9 @@ import { logger } from '../config/logger.js';
 
 export interface SessionData {
   checkout?: {
-    step: 'name' | 'email' | 'line_1' | 'city' | 'postal_code' | 'country' | 'phone' | 'confirm';
+    // 'choose_shipping' is inserted between phone and confirm; the bot
+    // skips straight to confirm if the merchant has no shipping options.
+    step: 'name' | 'email' | 'line_1' | 'city' | 'postal_code' | 'country' | 'phone' | 'choose_shipping' | 'confirm';
     data: Partial<{
       full_name: string;
       email: string;
@@ -14,6 +16,8 @@ export interface SessionData {
       postal_code: string;
       country: string;
       phone: string;
+      shipping_option_name: string;
+      shipping_cost: number;
     }>;
   };
 }

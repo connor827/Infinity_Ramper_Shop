@@ -28,6 +28,12 @@ import {
   updateCategory,
   deleteCategory,
   reorderCategories,
+  listShippingOptions,
+  createShippingOption,
+  getShippingOption,
+  updateShippingOption,
+  deleteShippingOption,
+  reorderShippingOptions,
 } from '../db/shop.js';
 import { hashPassword, verifyPassword, signToken, verifyToken } from '../middleware/auth.js';
 import { env } from '../config/env.js';
@@ -634,6 +640,104 @@ merchantRouter.post('/categories/reorder', requireAuth, async (req: AuthedReques
 });
 
 // ---------------------------------------------------------------------------
+// Shipping options
+// ---------------------------------------------------------------------------
+
+const shippingOptionSchema = z.object({
+  name: z.string().min(1).max(80),
+  price: z.number().min(0).max(999999),
+  // Buyers expect "free over £30" — threshold is the inclusive minimum
+  // subtotal that triggers free shipping. null = no threshold.
+  free_threshold: z.number().positive().nullable().optional(),
+});
+
+const shippingOptionPatchSchema = z.object({
+  name: z.string().min(1).max(80).optional(),
+  price: z.number().min(0).max(999999).optional(),
+  free_threshold: z.number().positive().nullable().optional(),
+  position: z.number().int().min(0).optional(),
+});
+
+const shippingOptionReorderSchema = z.object({
+  order: z.array(z.object({
+    id: z.string().uuid(),
+    position: z.number().int().min(0),
+  })).max(200),
+});
+
+merchantRouter.get('/shipping-options', requireAuth, async (req: AuthedRequest, res) => {
+  const opts = await listShippingOptions(req.merchantId!);
+  res.json(opts);
+});
+
+merchantRouter.post('/shipping-options', requireAuth, async (req: AuthedRequest, res) => {
+  const parsed = shippingOptionSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.flatten() });
+    return;
+  }
+  try {
+    const opt = await createShippingOption(req.merchantId!, {
+      name: parsed.data.name.trim(),
+      price: parsed.data.price,
+      free_threshold: parsed.data.free_threshold ?? null,
+    });
+    res.status(201).json(opt);
+  } catch (err: unknown) {
+    if (err && typeof err === 'object' && 'code' in err && (err as { code: string }).code === '23505') {
+      res.status(409).json({ error: 'a shipping option with that name already exists' });
+      return;
+    }
+    throw err;
+  }
+});
+
+merchantRouter.patch('/shipping-options/:id', requireAuth, async (req: AuthedRequest, res) => {
+  const parsed = shippingOptionPatchSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.flatten() });
+    return;
+  }
+  try {
+    const updated = await updateShippingOption(req.merchantId!, String(req.params.id), {
+      ...parsed.data,
+      ...(parsed.data.name !== undefined ? { name: parsed.data.name.trim() } : {}),
+    });
+    if (!updated) {
+      res.status(404).json({ error: 'not found' });
+      return;
+    }
+    res.json(updated);
+  } catch (err: unknown) {
+    if (err && typeof err === 'object' && 'code' in err && (err as { code: string }).code === '23505') {
+      res.status(409).json({ error: 'a shipping option with that name already exists' });
+      return;
+    }
+    throw err;
+  }
+});
+
+merchantRouter.delete('/shipping-options/:id', requireAuth, async (req: AuthedRequest, res) => {
+  const ok = await deleteShippingOption(req.merchantId!, String(req.params.id));
+  if (!ok) {
+    res.status(404).json({ error: 'not found' });
+    return;
+  }
+  res.status(204).end();
+});
+
+merchantRouter.post('/shipping-options/reorder', requireAuth, async (req: AuthedRequest, res) => {
+  const parsed = shippingOptionReorderSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.flatten() });
+    return;
+  }
+  await reorderShippingOptions(req.merchantId!, parsed.data.order);
+  const opts = await listShippingOptions(req.merchantId!);
+  res.json(opts);
+});
+
+// ---------------------------------------------------------------------------
 // Orders
 // ---------------------------------------------------------------------------
 
@@ -679,7 +783,7 @@ merchantRouter.get('/orders/export.csv', requireAuth, async (req: AuthedRequest,
     'order_number', 'created_at', 'status', 'buyer',
     'recipient_name', 'address_line_1', 'address_line_2', 'city',
     'postal_code', 'country', 'phone', 'email',
-    'currency', 'subtotal', 'shipping', 'total',
+    'currency', 'subtotal', 'shipping', 'shipping_option', 'total',
     'paid_at', 'shipped_at', 'tracking_carrier', 'tracking_number',
   ];
   const escape = (v: unknown) => {
@@ -712,7 +816,7 @@ merchantRouter.get('/orders/export.csv', requireAuth, async (req: AuthedRequest,
         addr?.phone ?? '',
         addr?.email ?? '',
         o.currency_code,
-        o.subtotal, o.shipping, o.total,
+        o.subtotal, o.shipping, o.shipping_option_name ?? '', o.total,
         o.paid_at ?? '', o.shipped_at ?? '',
         o.tracking_carrier ?? '', o.tracking_number ?? '',
       ].map(escape).join(',')

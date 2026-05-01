@@ -52,6 +52,25 @@ export interface ProductCategoryWithCount extends ProductCategory {
   product_count: number;
 }
 
+export interface ShippingOption {
+  id: string;
+  merchant_id: string;
+  name: string;
+  price: string;             // numeric, returned as string by pg
+  free_threshold: string | null;
+  position: number;
+  created_at: Date;
+  updated_at: Date;
+}
+
+// Returned by listShippingOptionsWithEffectivePrice — adds a computed
+// effective_price for the supplied subtotal so the bot doesn't need to
+// re-implement the threshold logic.
+export interface ShippingOptionWithEffectivePrice extends ShippingOption {
+  effective_price: number;
+  is_free: boolean;
+}
+
 export interface Buyer {
   id: string;
   merchant_id: string;
@@ -72,6 +91,7 @@ export interface Order {
   total: string;
   currency_code: string;
   shipping_address: ShippingAddress | null;
+  shipping_option_name: string | null;
   status:
     | 'awaiting_payment'
     | 'paid'

@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Shipping — Infinity Ramper Shops</title>
+<link rel="stylesheet" href="/assets/branding.css">
+<style>
+  /* Shipping options table */
+  .ship-row {
+    display: grid;
+    grid-template-columns: 24px 1fr 140px 160px auto;
+    gap: 14px;
+    align-items: center;
+    padding: 14px 16px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    margin-bottom: 10px;
+    transition: border-color 120ms ease, background 120ms ease;
+  }
+  .ship-row.dragging { opacity: 0.4; }
+  .ship-row.drag-over { border-color: var(--accent); background: var(--bg-warm); }
+
+  .ship-handle {
+    cursor: grab;
+    color: var(--ink-faint);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 14px;
+    user-select: none;
+    line-height: 1;
+    text-align: center;
+  }
+  .ship-handle:active { cursor: grabbing; }
+
+  .ship-name-display { color: var(--ink); font-weight: 500; }
+  .ship-meta {
+    color: var(--ink-faint);
+    font-size: 12px;
+    font-family: 'IBM Plex Mono', monospace;
+    margin-top: 2px;
+  }
+
+  .ship-price {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 14px;
+    color: var(--ink);
+    text-align: right;
+  }
+
+  .ship-threshold {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 13px;
+    color: var(--ink-mid);
+    text-align: right;
+  }
+  .ship-threshold .label {
+    color: var(--ink-faint);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    display: block;
+    margin-bottom: 2px;
+    font-family: 'Funnel Display', sans-serif;
+  }
+  .ship-threshold .none { color: var(--ink-faint); font-style: italic; }
+
+  .ship-actions { display: flex; gap: 6px; }
+
+  /* Add/edit form */
+  .form-card {
+    background: var(--bg-warm);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 18px 20px;
+    margin-bottom: 24px;
+  }
+  .form-grid {
+    display: grid;
+    grid-template-columns: 1.4fr 1fr 1fr auto;
+    gap: 12px;
+    align-items: end;
+  }
+  @media (max-width: 800px) {
+    .form-grid { grid-template-columns: 1fr; }
+    .ship-row { grid-template-columns: 24px 1fr auto; }
+    .ship-row > .ship-price, .ship-row > .ship-threshold { display: none; }
+  }
+
+  .form-grid .form-row { margin: 0; display: flex; flex-direction: column; gap: 6px; }
+  .form-grid label {
+    font-family: 'Funnel Display', sans-serif;
+    font-weight: 500;
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+  }
+  .form-grid input {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--ink);
+    font-family: 'Inter', sans-serif;
+    font-size: 14px;
+    padding: 9px 11px;
+    border-radius: 4px;
+    outline: none;
+    transition: border-color 120ms ease;
+    width: 100%;
+  }
+  .form-grid input:focus { border-color: var(--accent); }
+
+  .ship-empty {
+    text-align: center;
+    padding: 40px 20px;
+    color: var(--ink-faint);
+    font-size: 13px;
+    background: var(--bg-warm);
+    border: 1px dashed var(--border);
+    border-radius: 6px;
+  }
+
+  /* Inline edit mode for a row */
+  .ship-row.editing {
+    grid-template-columns: 24px 1fr 140px 160px auto;
+    background: var(--bg-warm);
+    border-color: var(--accent);
+  }
+  .ship-row.editing input {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--ink);
+    font-family: 'Inter', sans-serif;
+    font-size: 14px;
+    padding: 7px 10px;
+    border-radius: 4px;
+    outline: none;
+    width: 100%;
+  }
+  .ship-row.editing input:focus { border-color: var(--accent); }
+
+  .currency-input {
+    position: relative;
+  }
+  .currency-input .prefix {
+    position: absolute;
+    left: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--ink-faint);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 13px;
+    pointer-events: none;
+  }
+  .currency-input input { padding-left: 28px; }
+</style>
+</head>
+<body>
+<div id="page"></div>
+<script src="/assets/shell.js"></script>
+<script>
+(async () => {
+  'use strict';
+  if (!Auth.require()) return;
+
+  const main = Shell.render({
+    crumbs: [{ label: 'Dashboard', href: '/dashboard' }, { label: 'Shipping' }],
+  });
+
+  // Currency symbol map for prefix display. Falls back to the code itself
+  // (e.g. "USD") if we don't have a symbol on file. Same idea as products.html.
+  const SYMBOLS = { USD: '$', GBP: '£', EUR: '€', CAD: 'C$', AUD: 'A$', NZD: 'NZ$', JPY: '¥' };
+
+  const store = {
+    options: [],
+    currency: 'USD',
+    currencySymbol: '$',
+  };
+
+  // Standard escape helpers — same names used in other dashboard pages
+  // so consistency holds across the codebase.
+  function escapeHtml(s) {
+    return String(s ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+  function escapeAttr(s) {
+    return escapeHtml(s);
+  }
+
+  main.innerHTML = `
+    <div class="page-head">
+      <div>
+        <span class="eyebrow">Fulfilment</span>
+        <h1 class="display mt-2">Shipping options</h1>
+        <div class="meta" id="ship-meta">Loading…</div>
+      </div>
+    </div>
+
+    <div class="form-card" id="add-card">
+      <div class="form-grid">
+        <div class="form-row">
+          <label for="s-name">Name</label>
+          <input type="text" id="s-name" placeholder="e.g. Standard, Express" maxlength="80"/>
+        </div>
+        <div class="form-row">
+          <label for="s-price">Price</label>
+          <div class="currency-input">
+            <span class="prefix" id="s-price-prefix">$</span>
+            <input type="number" id="s-price" min="0" step="0.01" placeholder="0.00"/>
+          </div>
+        </div>
+        <div class="form-row">
+          <label for="s-threshold">Free over (optional)</label>
+          <div class="currency-input">
+            <span class="prefix" id="s-threshold-prefix">$</span>
+            <input type="number" id="s-threshold" min="0.01" step="0.01" placeholder="leave blank"/>
+          </div>
+        </div>
+        <div class="form-row" style="align-self:end">
+          <button class="btn btn-primary btn-sm" id="add-btn">+ Add option</button>
+        </div>
+      </div>
+      <div class="hint" style="margin-top:10px;color:var(--ink-faint);font-size:12px;line-height:1.5">
+        <em style="color:var(--ink-mid)">Free over:</em> when set, this option becomes free
+        once the cart subtotal hits that amount. Leave blank if the price always applies.
+      </div>
+    </div>
+
+    <div id="ship-wrap">
+      <div class="ship-empty"><em>Loading…</em></div>
+    </div>
+  `;
+
+  async function loadMe() {
+    try {
+      const me = await API('GET', '/me');
+      store.currency = me.currency_code || 'USD';
+      store.currencySymbol = SYMBOLS[store.currency] || store.currency;
+      // Update both currency prefixes to reflect the merchant's currency.
+      document.getElementById('s-price-prefix').textContent = store.currencySymbol;
+      document.getElementById('s-threshold-prefix').textContent = store.currencySymbol;
+    } catch (err) {
+      console.error('Failed to load merchant info:', err);
+    }
+  }
+
+  async function loadOptions() {
+    try {
+      store.options = await API('GET', '/shipping-options');
+      render();
+    } catch (err) {
+      console.error('Failed to load shipping options:', err);
+      document.getElementById('ship-wrap').innerHTML = `
+        <div class="ship-empty">
+          <div class="display">Couldn't load shipping options.</div>
+          <em>Refresh the page or try again in a moment.</em>
+        </div>
+      `;
+      document.getElementById('ship-meta').textContent = 'Error loading';
+    }
+  }
+
+  function render() {
+    const wrap = document.getElementById('ship-wrap');
+    const meta = document.getElementById('ship-meta');
+
+    if (store.options.length === 0) {
+      meta.textContent = 'No options yet';
+      wrap.innerHTML = `
+        <div class="ship-empty">
+          <em>Buyers will see "Free shipping" at checkout until you add options.</em>
+        </div>
+      `;
+      return;
+    }
+
+    meta.textContent =
+      store.options.length === 1
+        ? '1 option configured'
+        : `${store.options.length} options configured`;
+
+    const sym = store.currencySymbol;
+    const rows = store.options.map((o) => {
+      const priceStr = `${sym}${Number(o.price).toFixed(2)}`;
+      const thresholdHtml = o.free_threshold !== null && o.free_threshold !== undefined
+        ? `<div><span class="label">Free over</span>${sym}${Number(o.free_threshold).toFixed(2)}</div>`
+        : `<div><span class="label">Threshold</span><span class="none">none</span></div>`;
+      return `
+        <div class="ship-row" draggable="true" data-id="${escapeAttr(o.id)}">
+          <span class="ship-handle" title="Drag to reorder">⋮⋮</span>
+          <div>
+            <div class="ship-name-display">${escapeHtml(o.name)}</div>
+          </div>
+          <div class="ship-price">${priceStr}</div>
+          <div class="ship-threshold">${thresholdHtml}</div>
+          <div class="ship-actions">
+            <button class="btn btn-ghost btn-sm" data-edit data-id="${escapeAttr(o.id)}">Edit</button>
+            <button class="btn btn-ghost btn-sm" data-delete data-id="${escapeAttr(o.id)}" data-name="${escapeAttr(o.name)}">Delete</button>
+          </div>
+        </div>
+      `;
+    }).join('');
+    wrap.innerHTML = `<div id="ship-list">${rows}</div>`;
+
+    // Wire row buttons
+    wrap.querySelectorAll('[data-edit]').forEach((btn) => {
+      btn.addEventListener('click', () => startEdit(btn.dataset.id));
+    });
+    wrap.querySelectorAll('[data-delete]').forEach((btn) => {
+      btn.addEventListener('click', () => deleteOption(btn.dataset.id, btn.dataset.name));
+    });
+    wireDragReorder();
+  }
+
+  // Inline edit replaces the row with input fields. Save on Enter or
+  // commit; Escape cancels.
+  function startEdit(id) {
+    const opt = store.options.find((o) => o.id === id);
+    if (!opt) return;
+    const row = document.querySelector(`.ship-row[data-id="${CSS.escape(id)}"]`);
+    if (!row) return;
+
+    row.classList.add('editing');
+    const sym = store.currencySymbol;
+    const thresholdValue = opt.free_threshold !== null && opt.free_threshold !== undefined
+      ? Number(opt.free_threshold).toFixed(2)
+      : '';
+    row.innerHTML = `
+      <span class="ship-handle">⋮⋮</span>
+      <input type="text" data-field="name" value="${escapeAttr(opt.name)}" maxlength="80"/>
+      <div class="currency-input">
+        <span class="prefix">${sym}</span>
+        <input type="number" data-field="price" min="0" step="0.01" value="${Number(opt.price).toFixed(2)}"/>
+      </div>
+      <div class="currency-input">
+        <span class="prefix">${sym}</span>
+        <input type="number" data-field="threshold" min="0.01" step="0.01" placeholder="blank = none" value="${thresholdValue}"/>
+      </div>
+      <div class="ship-actions">
+        <button class="btn btn-primary btn-sm" data-save>Save</button>
+        <button class="btn btn-ghost btn-sm" data-cancel>Cancel</button>
+      </div>
+    `;
+
+    const nameInput = row.querySelector('[data-field="name"]');
+    const priceInput = row.querySelector('[data-field="price"]');
+    const thresholdInput = row.querySelector('[data-field="threshold"]');
+    nameInput.focus();
+    nameInput.select();
+
+    async function commit() {
+      const name = nameInput.value.trim();
+      const price = parseFloat(priceInput.value);
+      const thresholdRaw = thresholdInput.value.trim();
+      const threshold = thresholdRaw === '' ? null : parseFloat(thresholdRaw);
+
+      if (!name) return Toast.err('Name is required.');
+      if (!isFinite(price) || price < 0) return Toast.err('Price must be zero or greater.');
+      if (threshold !== null && (!isFinite(threshold) || threshold <= 0)) {
+        return Toast.err('Free-over threshold must be greater than zero, or leave blank.');
+      }
+
+      try {
+        await API('PATCH', '/shipping-options/' + encodeURIComponent(id), {
+          name, price, free_threshold: threshold,
+        });
+        await loadOptions();
+        Toast.ok('Saved.');
+      } catch (err) {
+        Toast.err(err.message || 'Could not save.');
+      }
+    }
+    function cancel() { render(); }
+
+    row.querySelector('[data-save]').addEventListener('click', commit);
+    row.querySelector('[data-cancel]').addEventListener('click', cancel);
+    [nameInput, priceInput, thresholdInput].forEach((el) => {
+      el.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); commit(); }
+        else if (e.key === 'Escape') { e.preventDefault(); cancel(); }
+      });
+    });
+  }
+
+  async function deleteOption(id, name) {
+    if (!window.confirm(`Delete "${name}"? Existing orders that used this option are unaffected.`)) return;
+    try {
+      await API('DELETE', '/shipping-options/' + encodeURIComponent(id));
+      await loadOptions();
+      Toast.ok('Deleted.');
+    } catch (err) {
+      Toast.err(err.message || 'Could not delete.');
+    }
+  }
+
+  // Drag-and-drop reorder — same pattern as the Manage Categories drawer.
+  let dragSrcId = null;
+  function wireDragReorder() {
+    const rows = document.querySelectorAll('#ship-list .ship-row');
+    rows.forEach((row) => {
+      row.addEventListener('dragstart', (e) => {
+        dragSrcId = row.dataset.id;
+        row.classList.add('dragging');
+        try { e.dataTransfer.setData('text/plain', dragSrcId); } catch {}
+        e.dataTransfer.effectAllowed = 'move';
+      });
+      row.addEventListener('dragend', () => {
+        row.classList.remove('dragging');
+        document.querySelectorAll('.ship-row.drag-over').forEach((r) => r.classList.remove('drag-over'));
+      });
+      row.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        if (row.dataset.id !== dragSrcId) row.classList.add('drag-over');
+      });
+      row.addEventListener('dragleave', () => row.classList.remove('drag-over'));
+      row.addEventListener('drop', async (e) => {
+        e.preventDefault();
+        row.classList.remove('drag-over');
+        const targetId = row.dataset.id;
+        if (!dragSrcId || dragSrcId === targetId) return;
+
+        const opts = store.options.slice();
+        const srcIdx = opts.findIndex((o) => o.id === dragSrcId);
+        const tgtIdx = opts.findIndex((o) => o.id === targetId);
+        if (srcIdx === -1 || tgtIdx === -1) return;
+        const [moved] = opts.splice(srcIdx, 1);
+        const insertAt = srcIdx < tgtIdx ? tgtIdx - 1 : tgtIdx;
+        opts.splice(insertAt, 0, moved);
+
+        store.options = opts;
+        render();
+        try {
+          await API('POST', '/shipping-options/reorder', {
+            order: opts.map((o, i) => ({ id: o.id, position: i })),
+          });
+          await loadOptions();
+        } catch (err) {
+          Toast.err(err.message || 'Could not save new order.');
+          await loadOptions();
+        }
+      });
+    });
+  }
+
+  // ---------- Add new option ----------
+  const addBtn = document.getElementById('add-btn');
+  const nameInput = document.getElementById('s-name');
+  const priceInput = document.getElementById('s-price');
+  const thresholdInput = document.getElementById('s-threshold');
+
+  async function handleAdd() {
+    const name = nameInput.value.trim();
+    const price = parseFloat(priceInput.value);
+    const thresholdRaw = thresholdInput.value.trim();
+    const threshold = thresholdRaw === '' ? null : parseFloat(thresholdRaw);
+
+    if (!name) return Toast.err('Name is required.');
+    if (!isFinite(price) || price < 0) return Toast.err('Price must be zero or greater.');
+    if (threshold !== null && (!isFinite(threshold) || threshold <= 0)) {
+      return Toast.err('Free-over threshold must be greater than zero, or leave blank.');
+    }
+
+    addBtn.disabled = true;
+    try {
+      await API('POST', '/shipping-options', {
+        name, price, free_threshold: threshold,
+      });
+      nameInput.value = '';
+      priceInput.value = '';
+      thresholdInput.value = '';
+      nameInput.focus();
+      await loadOptions();
+      Toast.ok('Option added.');
+    } catch (err) {
+      Toast.err(err.message || 'Could not create option.');
+    } finally {
+      addBtn.disabled = false;
+    }
+  }
+
+  addBtn.addEventListener('click', handleAdd);
+  [nameInput, priceInput, thresholdInput].forEach((el) => {
+    el.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); handleAdd(); }
+    });
+  });
+
+  await loadMe();
+  await loadOptions();
+})();
+</script>
+</body>
+</html>

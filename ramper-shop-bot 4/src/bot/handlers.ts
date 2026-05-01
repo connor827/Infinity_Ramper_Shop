@@ -12,6 +12,7 @@ import {
   createOrderFromCart,
   attachRamperToOrder,
   listCategoriesForMerchant,
+  listShippingOptionsWithEffectivePrice,
 } from '../db/shop.js';
 import { ramperClient } from '../payments/ramper.js';
 import { logger } from '../config/logger.js';
@@ -239,24 +240,40 @@ export function registerHandlers(bot: Bot<BotContext>): void {
         return;
       case 'phone':
         if (text !== '/skip') flow.data.phone = text;
-        flow.step = 'confirm';
-        await ctx.reply(
-          `Confirm delivery\n\n` +
-            `${flow.data.full_name}\n` +
-            `${flow.data.line_1}\n` +
-            `${flow.data.city}, ${flow.data.postal_code}\n` +
-            `${flow.data.country}\n` +
-            (flow.data.phone ? `${flow.data.phone}\n` : '') +
-            `\n${flow.data.email}`,
-          {
-            reply_markup: new InlineKeyboard()
-              .text('confirm & pay', 'checkout:confirm')
-              .row()
-              .text('cancel', 'checkout:cancel'),
-          }
-        );
+        await proceedToShippingOrConfirm(ctx);
         return;
     }
+  });
+
+  // Buyer picked a shipping option from the inline keyboard. Encoded as
+  //   ship:<optionId>   for a real option from the DB
+  //   ship:none         for the synthetic "Free shipping" used when the
+  //                     merchant has no options configured at all
+  bot.callbackQuery(/^ship:(.+)$/, async (ctx) => {
+    await safeAnswer(ctx);
+    const flow = ctx.session.checkout;
+    if (!flow || flow.step !== 'choose_shipping') return;
+
+    const choice = ctx.match[1];
+    const subtotal = await cartSubtotal(ctx.buyerId);
+
+    if (choice === 'none') {
+      // Defensive: the synthetic option only ever appears when there are
+      // no real options. If we're here, just record it.
+      flow.data.shipping_option_name = 'Free shipping';
+      flow.data.shipping_cost = 0;
+    } else {
+      const opts = await listShippingOptionsWithEffectivePrice(ctx.merchant.id, subtotal);
+      const picked = opts.find((o) => o.id === choice);
+      if (!picked) {
+        await ctx.reply('That shipping option is no longer available. Please try again.');
+        return;
+      }
+      flow.data.shipping_option_name = picked.name;
+      flow.data.shipping_cost = picked.effective_price;
+    }
+    flow.step = 'confirm';
+    await renderConfirmScreen(ctx);
   });
 
   bot.callbackQuery('checkout:cancel', async (ctx) => {
@@ -292,8 +309,9 @@ export function registerHandlers(bot: Bot<BotContext>): void {
         ctx.merchant.id,
         ctx.buyerId,
         shipping,
-        0,
-        ctx.merchant.currency_code
+        flow.data.shipping_cost ?? 0,
+        ctx.merchant.currency_code,
+        flow.data.shipping_option_name ?? null
       );
 
       const ramperWallet = await ramperClient.createWallet({
@@ -323,9 +341,17 @@ export function registerHandlers(bot: Bot<BotContext>): void {
         `${shipping.city}, ${shipping.postal_code}\n` +
         `${shipping.country}`;
 
+      // Render the shipping line with whatever the buyer chose. "Free" if
+      // it cost nothing, otherwise the option name plus the price.
+      const shippingCostNum = Number(order.shipping);
+      const shippingLine = shippingCostNum > 0
+        ? `${order.shipping_option_name ?? 'Shipping'}: ${formatMoney(String(order.shipping), order.currency_code)}`
+        : `${order.shipping_option_name ?? 'Free shipping'}: free`;
+
       await ctx.reply(
         `Order #${order.order_number} - ${ctx.merchant.store_name}\n\n` +
           `Items: ${formatMoney(String(order.subtotal), order.currency_code)}\n` +
+          `${shippingLine}\n` +
           `Total: ${formatMoney(String(order.total), order.currency_code)}\n\n` +
           `Shipping to:\n${addrSummary}\n\n` +
           `Tap "Pay now" to complete checkout. Pay with card, Apple Pay, ` +
@@ -504,6 +530,86 @@ async function mainMenu(buyerId: string, currency: string): Promise<InlineKeyboa
     .text(cartTxt, 'menu:cart')
     .row()
     .text('Help', 'menu:help');
+}
+
+// Compute the cart subtotal once — used both to evaluate free-shipping
+// thresholds and to label the shipping options.
+async function cartSubtotal(buyerId: string): Promise<number> {
+  const items = await getCart(buyerId);
+  return items.reduce((s, i) => s + Number(i.unit_price) * i.quantity, 0);
+}
+
+// After the buyer enters their phone (or skips it), decide whether to show
+// shipping options or jump straight to the confirm screen. Branching here
+// keeps the message-text handler focused on its switch statement.
+async function proceedToShippingOrConfirm(ctx: BotContext): Promise<void> {
+  const flow = ctx.session.checkout;
+  if (!flow) return;
+
+  const subtotal = await cartSubtotal(ctx.buyerId);
+  const opts = await listShippingOptionsWithEffectivePrice(ctx.merchant.id, subtotal);
+
+  if (opts.length === 0) {
+    // No options configured — preserve the legacy "free shipping" behaviour.
+    flow.data.shipping_option_name = 'Free shipping';
+    flow.data.shipping_cost = 0;
+    flow.step = 'confirm';
+    await renderConfirmScreen(ctx);
+    return;
+  }
+
+  // Otherwise let the buyer pick. Each button shows the option name and
+  // either its price or 'free' when the threshold is met.
+  flow.step = 'choose_shipping';
+  const currency = ctx.merchant.currency_code;
+  const kb = new InlineKeyboard();
+  for (const o of opts) {
+    const label = o.is_free
+      ? `${o.name} - free`
+      : `${o.name} - ${formatMoney(String(o.effective_price), currency)}`;
+    kb.text(label, `ship:${o.id}`).row();
+  }
+  kb.text('cancel', 'checkout:cancel');
+  await ctx.reply('Choose a shipping option:', { reply_markup: kb });
+}
+
+// Render the final "confirm and pay" screen. Reads the captured shipping
+// choice and price from the session — those are set either by
+// proceedToShippingOrConfirm (when there are no options) or by the
+// ship:<id> callback (when the buyer picks one).
+async function renderConfirmScreen(ctx: BotContext): Promise<void> {
+  const flow = ctx.session.checkout;
+  if (!flow) return;
+
+  const subtotal = await cartSubtotal(ctx.buyerId);
+  const currency = ctx.merchant.currency_code;
+  const shippingCost = flow.data.shipping_cost ?? 0;
+  const shippingName = flow.data.shipping_option_name ?? 'Free shipping';
+  const total = subtotal + shippingCost;
+
+  const shippingLine = shippingCost > 0
+    ? `${shippingName}: ${formatMoney(String(shippingCost), currency)}`
+    : `${shippingName}: free`;
+
+  await ctx.reply(
+    `Confirm order\n\n` +
+      `Delivering to:\n` +
+      `${flow.data.full_name}\n` +
+      `${flow.data.line_1}\n` +
+      `${flow.data.city}, ${flow.data.postal_code}\n` +
+      `${flow.data.country}\n` +
+      (flow.data.phone ? `${flow.data.phone}\n` : '') +
+      `${flow.data.email}\n\n` +
+      `Items: ${formatMoney(String(subtotal), currency)}\n` +
+      `${shippingLine}\n` +
+      `Total: ${formatMoney(String(total), currency)}`,
+    {
+      reply_markup: new InlineKeyboard()
+        .text('confirm & pay', 'checkout:confirm')
+        .row()
+        .text('cancel', 'checkout:cancel'),
+    }
+  );
 }
 
 // ---------------------------------------------------------------------------

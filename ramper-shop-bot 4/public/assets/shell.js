@@ -131,6 +131,7 @@
     { href: '/dashboard',            label: 'Overview',  match: /^\/dashboard\/?$/ },
     { href: '/dashboard/orders',     label: 'Orders',    match: /^\/dashboard\/orders/ },
     { href: '/dashboard/products',   label: 'Products',  match: /^\/dashboard\/products/ },
+    { href: '/dashboard/shipping',   label: 'Shipping',  match: /^\/dashboard\/shipping/ },
     { href: '/dashboard/customers',  label: 'Customers', match: /^\/dashboard\/customers/ },
     { href: '/dashboard/bot',        label: 'Bot',       match: /^\/dashboard\/bot/ },
     { href: '/dashboard/settings',   label: 'Settings',  match: /^\/dashboard\/settings/ },

@@ -1,6 +1,6 @@
 import pg from 'pg';
 import { query, withTransaction } from './pool.js';
-import type { Product, Buyer, Order, CartItem, ShippingAddress, ProductCategory, ProductCategoryWithCount } from '../types/index.js';
+import type { Product, Buyer, Order, CartItem, ShippingAddress, ProductCategory, ProductCategoryWithCount, ShippingOption, ShippingOptionWithEffectivePrice } from '../types/index.js';
 
 // ------------------------------------------------------------------
 // Products
@@ -243,6 +243,140 @@ export async function reorderCategories(
     for (const item of order) {
       await client.query(
         `UPDATE product_categories
+            SET position = $1
+          WHERE id = $2 AND merchant_id = $3`,
+        [item.position, item.id, merchantId]
+      );
+    }
+  });
+}
+
+// ------------------------------------------------------------------
+// Shipping options
+// ------------------------------------------------------------------
+
+// List the merchant's shipping options in display order. Returned with raw
+// price strings — use listShippingOptionsWithEffectivePrice when you need
+// the threshold logic resolved.
+export async function listShippingOptions(
+  merchantId: string
+): Promise<ShippingOption[]> {
+  const { rows } = await query<ShippingOption>(
+    `SELECT * FROM shipping_options
+      WHERE merchant_id = $1
+      ORDER BY position ASC, name ASC`,
+    [merchantId]
+  );
+  return rows;
+}
+
+// List shipping options with the threshold logic already applied for the
+// supplied subtotal. Each option gets:
+//   - effective_price: 0 if free_threshold is set and subtotal >= threshold,
+//                       otherwise the option's normal price
+//   - is_free: convenience boolean
+// The bot iterates over this and just prints the prices it gets back.
+export async function listShippingOptionsWithEffectivePrice(
+  merchantId: string,
+  subtotal: number
+): Promise<ShippingOptionWithEffectivePrice[]> {
+  const opts = await listShippingOptions(merchantId);
+  return opts.map((o) => {
+    const threshold = o.free_threshold !== null ? Number(o.free_threshold) : null;
+    const isFree = threshold !== null && subtotal >= threshold;
+    return {
+      ...o,
+      effective_price: isFree ? 0 : Number(o.price),
+      is_free: isFree,
+    };
+  });
+}
+
+export async function createShippingOption(
+  merchantId: string,
+  data: { name: string; price: number; free_threshold?: number | null }
+): Promise<ShippingOption> {
+  return await withTransaction(async (client) => {
+    const { rows: posRows } = await client.query<{ next_pos: number }>(
+      `SELECT COALESCE(MAX(position), -1) + 1 AS next_pos
+         FROM shipping_options
+        WHERE merchant_id = $1`,
+      [merchantId]
+    );
+    const nextPos = posRows[0]?.next_pos ?? 0;
+    const { rows } = await client.query<ShippingOption>(
+      `INSERT INTO shipping_options (merchant_id, name, price, free_threshold, position)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING *`,
+      [merchantId, data.name, data.price, data.free_threshold ?? null, nextPos]
+    );
+    return rows[0];
+  });
+}
+
+export async function getShippingOption(
+  merchantId: string,
+  optionId: string
+): Promise<ShippingOption | null> {
+  const { rows } = await query<ShippingOption>(
+    `SELECT * FROM shipping_options WHERE id = $1 AND merchant_id = $2`,
+    [optionId, merchantId]
+  );
+  return rows[0] ?? null;
+}
+
+export async function updateShippingOption(
+  merchantId: string,
+  optionId: string,
+  patch: Partial<{
+    name: string;
+    price: number;
+    free_threshold: number | null;
+    position: number;
+  }>
+): Promise<ShippingOption | null> {
+  const fields: string[] = [];
+  const values: unknown[] = [];
+  let i = 1;
+  for (const [key, value] of Object.entries(patch)) {
+    if (value === undefined) continue;
+    fields.push(`${key} = $${i++}`);
+    values.push(value);
+  }
+  if (fields.length === 0) {
+    return getShippingOption(merchantId, optionId);
+  }
+  values.push(optionId, merchantId);
+  const { rows } = await query<ShippingOption>(
+    `UPDATE shipping_options
+        SET ${fields.join(', ')}
+      WHERE id = $${i++} AND merchant_id = $${i}
+      RETURNING *`,
+    values
+  );
+  return rows[0] ?? null;
+}
+
+export async function deleteShippingOption(
+  merchantId: string,
+  optionId: string
+): Promise<boolean> {
+  const { rowCount } = await query(
+    `DELETE FROM shipping_options WHERE id = $1 AND merchant_id = $2`,
+    [optionId, merchantId]
+  );
+  return (rowCount ?? 0) > 0;
+}
+
+export async function reorderShippingOptions(
+  merchantId: string,
+  order: Array<{ id: string; position: number }>
+): Promise<void> {
+  if (order.length === 0) return;
+  await withTransaction(async (client) => {
+    for (const item of order) {
+      await client.query(
+        `UPDATE shipping_options
             SET position = $1
           WHERE id = $2 AND merchant_id = $3`,
         [item.position, item.id, merchantId]
@@ -518,7 +652,8 @@ export async function createOrderFromCart(
   buyerId: string,
   shippingAddress: ShippingAddress,
   shipping: number,
-  currencyCode: string
+  currencyCode: string,
+  shippingOptionName: string | null = null
 ): Promise<Order> {
   return withTransaction(async (client) => {
     const itemsRes = await client.query<{
@@ -563,10 +698,10 @@ export async function createOrderFromCart(
       `INSERT INTO orders (
          merchant_id, buyer_id,
          subtotal, shipping, total, currency_code,
-         shipping_address
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+         shipping_address, shipping_option_name
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
        RETURNING *`,
-      [merchantId, buyerId, subtotal, shipping, total, currencyCode, shippingAddress]
+      [merchantId, buyerId, subtotal, shipping, total, currencyCode, shippingAddress, shippingOptionName]
     );
     const order = orderRes.rows[0];
 
