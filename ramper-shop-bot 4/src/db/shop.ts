@@ -463,6 +463,47 @@ export async function removeCartItem(buyerId: string, productId: string): Promis
   );
 }
 
+// Set the exact quantity for a cart line — used by the +/- buttons in the
+// cart view. If quantity drops to 0, the line is deleted (matches what a
+// buyer would expect from tapping − on a quantity of 1).
+//
+// Throws if quantity exceeds available stock so the caller can surface a
+// clear error to the buyer rather than silently capping.
+export async function setCartItemQuantity(
+  buyerId: string,
+  productId: string,
+  quantity: number
+): Promise<void> {
+  if (quantity < 0) throw new Error('Invalid quantity');
+  if (quantity === 0) {
+    await removeCartItem(buyerId, productId);
+    return;
+  }
+  await withTransaction(async (client) => {
+    // Lock the product row so concurrent stock changes can't slip past us.
+    const prodRes = await client.query<{ stock: number; merchant_id: string }>(
+      `SELECT p.stock, p.merchant_id
+         FROM products p
+         JOIN cart_items ci ON ci.product_id = p.id
+         JOIN carts c ON ci.cart_id = c.id
+        WHERE c.buyer_id = $1 AND p.id = $2
+        FOR UPDATE OF p`,
+      [buyerId, productId]
+    );
+    const prod = prodRes.rows[0];
+    if (!prod) throw new Error('Product not in cart');
+    if (prod.stock < quantity) throw new Error('Insufficient stock');
+
+    await client.query(
+      `UPDATE cart_items
+          SET quantity = $1
+        WHERE product_id = $2
+          AND cart_id IN (SELECT id FROM carts WHERE buyer_id = $3)`,
+      [quantity, productId, buyerId]
+    );
+  });
+}
+
 // ------------------------------------------------------------------
 // Orders
 // ------------------------------------------------------------------

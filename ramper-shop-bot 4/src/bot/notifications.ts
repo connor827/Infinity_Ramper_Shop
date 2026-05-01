@@ -30,12 +30,20 @@ export async function notifyBuyerOfPayment(orderId: string): Promise<void> {
 
   try {
     const customMessage = merchant.order_received_message?.trim();
+    // The first line confirms it's gone through, with the merchant's name
+    // for trust (so buyers seeing this in a Telegram notification stack
+    // know which shop the message is from). Then the order number and
+    // amount as a quick receipt-style summary, then either the merchant's
+    // custom thank-you note or our default closing.
     const base =
-      `Payment received for order #${row.order_number}\n\n` +
+      `Payment received - thanks for your order!\n\n` +
+      `${merchant.store_name}\n` +
+      `Order #${row.order_number}\n` +
       `Amount: ${row.currency_code} ${Number(row.total).toFixed(2)}\n\n`;
     const closing = customMessage && customMessage.length > 0
       ? customMessage
-      : `You'll get a shipping notification when your order is on its way.`;
+      : `Your order is now being processed. You'll get another message ` +
+        `here when it ships, with tracking details if available.`;
     await bot.api.sendMessage(row.telegram_id, base + closing);
   } catch (err) {
     logger.error({ err, orderId }, 'failed to notify buyer');
