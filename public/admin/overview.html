@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Platform Overview — Infinity Ramper Admin</title>
+<link rel="stylesheet" href="/assets/branding.css">
+<style>
+  .admin-layout {
+    display: grid;
+    grid-template-columns: 1fr 320px;
+    gap: 24px;
+    align-items: start;
+  }
+  @media (max-width: 1000px) { .admin-layout { grid-template-columns: 1fr; } }
+
+  .attention-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1px;
+    background: var(--border);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+    margin-bottom: 24px;
+  }
+  @media (max-width: 700px) { .attention-grid { grid-template-columns: repeat(2, 1fr); } }
+  .attention-cell {
+    background: var(--bg);
+    padding: 18px 20px;
+  }
+  .attention-cell .num {
+    font-family: 'Funnel Display', serif;
+    font-weight: 500;
+    font-size: 28px;
+    letter-spacing: -0.022em;
+    color: var(--ink);
+    line-height: 1;
+    margin-bottom: 6px;
+  }
+  .attention-cell .num.warn { color: var(--accent); }
+  .attention-cell .lbl {
+    font-family: 'Funnel Display', sans-serif;
+    font-weight: 500;
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+  }
+
+  .chart-pair {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1px;
+    background: var(--border);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+    margin-bottom: 24px;
+  }
+  @media (max-width: 700px) { .chart-pair { grid-template-columns: 1fr; } }
+  .chart-panel { background: var(--bg); padding: 20px 24px; }
+  .chart-panel .chart-title {
+    font-family: 'Funnel Display', serif;
+    font-weight: 500;
+    font-size: 20px;
+    letter-spacing: -0.022em;
+    color: var(--ink);
+    margin-bottom: 2px;
+  }
+  .chart-panel .chart-sub {
+    color: var(--ink-faint);
+    font-size: 12px;
+    margin-bottom: 16px;
+  }
+
+  .activity-panel {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+    max-height: calc(100vh - 140px);
+    display: flex;
+    flex-direction: column;
+  }
+  .activity-head {
+    padding: 16px 20px 14px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-warm);
+  }
+  .activity-body { overflow-y: auto; flex: 1; }
+  .activity-row {
+    padding: 12px 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex; gap: 12px; align-items: flex-start;
+  }
+  .activity-row:last-child { border-bottom: none; }
+  .activity-row .icon {
+    width: 24px; height: 24px; border-radius: 50%;
+    border: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0; font-size: 12px; color: var(--ink-mid);
+  }
+  .activity-row .icon.signup { border-color: var(--accent); color: var(--accent); }
+  .activity-row .icon.order { border-color: var(--green, #3a7a52); color: var(--green, #3a7a52); }
+  .activity-row .icon.bot { border-color: var(--ink-mid); }
+  .activity-row .content { flex: 1; min-width: 0; }
+  .activity-row .title { font-size: 13px; color: var(--ink); line-height: 1.35; }
+  .activity-row .title a { color: var(--accent); text-decoration: none; }
+  .activity-row .title a:hover { text-decoration: underline; }
+  .activity-row .meta { font-size: 11px; color: var(--ink-faint); margin-top: 2px; }
+
+  .mono { font-family: 'IBM Plex Mono', monospace; font-size: 12px; }
+</style>
+</head>
+<body>
+<div id="page"></div>
+<script src="/admin/admin-shell.js"></script>
+<script>
+(async () => {
+  'use strict';
+  if (!AdminAuth.require()) return;
+
+  const main = AdminShell.render({
+    crumbs: [{ label: 'Overview' }],
+  });
+
+  main.innerHTML = `
+    <div class="page-head">
+      <div>
+        <span class="eyebrow">Platform · last 30 days</span>
+        <h1 class="display mt-2">All merchants, at a glance</h1>
+        <div class="meta" id="subtitle">Loading platform data…</div>
+      </div>
+    </div>
+
+    <div class="admin-layout">
+      <div>
+        <div class="attention-grid" id="attention-grid">
+          <div class="attention-cell"><div class="num">—</div><div class="lbl">Loading</div></div>
+          <div class="attention-cell"><div class="num">—</div><div class="lbl">Loading</div></div>
+          <div class="attention-cell"><div class="num">—</div><div class="lbl">Loading</div></div>
+          <div class="attention-cell"><div class="num">—</div><div class="lbl">Loading</div></div>
+        </div>
+
+        <div class="chart-pair">
+          <div class="chart-panel">
+            <div class="chart-title" id="signups-total">—</div>
+            <div class="chart-sub" id="signups-sub">Signups · last 30 days</div>
+            <div id="signups-chart"><div class="empty"><em>Loading…</em></div></div>
+          </div>
+          <div class="chart-panel">
+            <div class="chart-title" id="revenue-total">—</div>
+            <div class="chart-sub" id="revenue-sub">Platform revenue · last 30 days</div>
+            <div id="revenue-chart"><div class="empty"><em>Loading…</em></div></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-head">
+            <div>
+              <span class="eyebrow plain">Merchants</span>
+              <h2 class="display mt-1">Recent signups</h2>
+            </div>
+            <a class="btn btn-ghost" href="/admin/merchants">All merchants →</a>
+          </div>
+          <div id="recent-merchants"><div class="empty"><em>Loading…</em></div></div>
+        </div>
+      </div>
+
+      <div class="activity-panel">
+        <div class="activity-head">
+          <span class="eyebrow">Activity</span>
+        </div>
+        <div class="activity-body" id="activity-body">
+          <div class="activity-row">
+            <div class="icon">·</div>
+            <div class="content"><div class="title">Loading…</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  let metrics, activity, merchantsList;
+  try {
+    [metrics, activity, merchantsList] = await Promise.all([
+      AdminAPI('GET', '/metrics'),
+      AdminAPI('GET', '/activity'),
+      AdminAPI('GET', '/merchants?limit=10'),
+    ]);
+  } catch (err) {
+    console.error('Admin overview load failed:', err);
+    AdminToast.err(err.message || 'Failed to load.');
+    return;
+  }
+
+  // --- Subtitle ---
+  const active = metrics.active_merchants;
+  const total = metrics.total_merchants;
+  document.getElementById('subtitle').textContent =
+    `${active} active of ${total} total · ${metrics.total_orders_30d} orders in last 30 days`;
+
+  // --- Attention counters ---
+  document.getElementById('attention-grid').innerHTML = `
+    <div class="attention-cell">
+      <div class="num">${metrics.total_merchants}</div>
+      <div class="lbl">Total merchants</div>
+    </div>
+    <div class="attention-cell">
+      <div class="num ${metrics.merchants_without_bot > 0 ? 'warn' : ''}">${metrics.merchants_without_bot}</div>
+      <div class="lbl">No bot connected</div>
+    </div>
+    <div class="attention-cell">
+      <div class="num ${metrics.merchants_without_wallet > 0 ? 'warn' : ''}">${metrics.merchants_without_wallet}</div>
+      <div class="lbl">No wallet set</div>
+    </div>
+    <div class="attention-cell">
+      <div class="num ${metrics.merchants_inactive_14d > 0 ? 'warn' : ''}">${metrics.merchants_inactive_14d}</div>
+      <div class="lbl">Quiet &gt; 14d</div>
+    </div>
+  `;
+
+  // --- Charts ---
+  const signupTotal = metrics.signup_series.reduce((s, p) => s + Number(p.count), 0);
+  document.getElementById('signups-total').textContent = signupTotal;
+  const revenueTotal = Number(metrics.platform_revenue_30d);
+  const { val } = Fmt.moneySplit(revenueTotal, 'USD');
+  document.getElementById('revenue-total').innerHTML =
+    `<span style="font-size:14px;color:var(--ink-faint);letter-spacing:0.02em;margin-right:6px">USD</span>${val}`;
+
+  renderSparkline(
+    document.getElementById('signups-chart'),
+    metrics.signup_series.map(p => ({ date: p.date, v: Number(p.count) }))
+  );
+  renderSparkline(
+    document.getElementById('revenue-chart'),
+    metrics.revenue_series.map(p => ({ date: p.date, v: Number(p.revenue) }))
+  );
+
+  // --- Recent merchants table ---
+  const rows = (merchantsList.merchants || []).slice(0, 10);
+  if (rows.length === 0) {
+    document.getElementById('recent-merchants').innerHTML = `
+      <div class="empty">
+        <div class="display">No merchants yet.</div>
+        <em>When someone signs up, they'll appear here.</em>
+      </div>
+    `;
+  } else {
+    document.getElementById('recent-merchants').innerHTML = `
+      <div class="table-wrap">
+        <table class="table">
+          <thead><tr>
+            <th>Merchant</th><th>Status</th><th>Bot</th><th class="text-right">Orders (30d)</th><th class="text-right">Revenue (30d)</th><th class="text-right">Signed up</th>
+          </tr></thead>
+          <tbody>${rows.map(renderMerchantRow).join('')}</tbody>
+        </table>
+      </div>
+    `;
+    document.querySelectorAll('tr[data-id]').forEach(tr => {
+      tr.addEventListener('click', () => {
+        window.location.href = `/admin/merchants/${tr.dataset.id}`;
+      });
+    });
+  }
+
+  // --- Activity feed ---
+  if (!activity || activity.length === 0) {
+    document.getElementById('activity-body').innerHTML = `
+      <div class="activity-row">
+        <div class="icon">·</div>
+        <div class="content"><div class="title" style="color:var(--ink-faint)">Nothing to show yet.</div></div>
+      </div>
+    `;
+  } else {
+    document.getElementById('activity-body').innerHTML = activity.map(renderActivityRow).join('');
+  }
+
+  function renderMerchantRow(m) {
+    const statusClass =
+      m.status === 'active' ? 'badge-shipped' :
+      m.status === 'suspended' ? 'badge-cancelled' :
+      m.status === 'pending' ? 'badge-awaiting' : 'badge-cancelled';
+    return `
+      <tr data-id="${Fmt.escape(m.id)}" style="cursor:pointer">
+        <td>
+          <div style="font-weight:500;color:var(--ink)">${Fmt.escape(m.store_name)}</div>
+          <div class="mono" style="color:var(--ink-faint);font-size:11px">${Fmt.escape(m.email || '—')}</div>
+        </td>
+        <td><span class="badge ${statusClass}">${Fmt.escape(m.status)}</span></td>
+        <td>${m.bot_username ? '@' + Fmt.escape(m.bot_username) : '<span class="muted">—</span>'}</td>
+        <td class="text-right num">${m.order_count || 0}</td>
+        <td class="text-right num">${Fmt.money(m.revenue_30d, 'USD')}</td>
+        <td class="text-right muted" style="font-size:12px">${Fmt.relative(m.created_at)}</td>
+      </tr>
+    `;
+  }
+
+  function renderActivityRow(a) {
+    const icons = { signup: '+', order: '£', bot_connected: 'b', first_order: '★' };
+    const classes = { signup: 'signup', order: 'order', bot_connected: 'bot', first_order: 'order' };
+    const titles = {
+      signup: (a) => `${Fmt.escape(a.merchant_name)} signed up`,
+      order: (a) => `New order · ${Fmt.escape(a.detail)}`,
+      bot_connected: (a) => `${Fmt.escape(a.merchant_name)} connected ${Fmt.escape(a.detail)}`,
+      first_order: (a) => `First order for ${Fmt.escape(a.merchant_name)} · ${Fmt.escape(a.detail)}`,
+    };
+    const titleFn = titles[a.kind] || ((a) => `${Fmt.escape(a.kind)} · ${Fmt.escape(a.merchant_name)}`);
+    return `
+      <div class="activity-row">
+        <div class="icon ${classes[a.kind] || ''}">${icons[a.kind] || '·'}</div>
+        <div class="content">
+          <div class="title"><a href="/admin/merchants/${Fmt.escape(a.merchant_id)}">${titleFn(a)}</a></div>
+          <div class="meta">${Fmt.relative(a.created_at)}</div>
+        </div>
+      </div>
+    `;
+  }
+
+  function renderSparkline(root, pts) {
+    if (pts.length === 0 || pts.every(p => p.v === 0)) {
+      root.innerHTML = `<div class="empty" style="padding:20px 0"><em>No activity yet.</em></div>`;
+      return;
+    }
+    const W = 600;
+    const H = 100;
+    const padding = { top: 8, right: 4, bottom: 18, left: 4 };
+    const plotW = W - padding.left - padding.right;
+    const plotH = H - padding.top - padding.bottom;
+
+    const values = pts.map(p => p.v);
+    const maxV = Math.max(1, ...values);
+    const niceMax = niceCeil(maxV);
+    const xStep = plotW / Math.max(1, pts.length - 1);
+    const coords = pts.map((p, i) => ({
+      x: padding.left + i * xStep,
+      y: padding.top + (1 - p.v / niceMax) * plotH,
+    }));
+    const linePath = coords.map((c, i) =>
+      (i === 0 ? 'M' : 'L') + c.x.toFixed(1) + ',' + c.y.toFixed(1)).join(' ');
+    const areaPath = linePath +
+      ` L${coords[coords.length - 1].x.toFixed(1)},${padding.top + plotH}` +
+      ` L${coords[0].x.toFixed(1)},${padding.top + plotH} Z`;
+    const xLabels = [0, Math.floor(pts.length / 2), pts.length - 1].map(i => {
+      const c = coords[i];
+      return `<text class="axis-label" x="${c.x}" y="${H - 4}" text-anchor="middle">${shortDate(pts[i].date)}</text>`;
+    }).join('');
+
+    root.innerHTML = `
+      <svg class="chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;max-height:120px">
+        <path class="area" d="${areaPath}"/>
+        <path class="line" d="${linePath}"/>
+        ${xLabels}
+      </svg>
+    `;
+  }
+
+  function niceCeil(v) {
+    if (v === 0) return 1;
+    const mag = Math.pow(10, Math.floor(Math.log10(v)));
+    const top = v / mag;
+    const nice = top <= 1 ? 1 : top <= 2 ? 2 : top <= 5 ? 5 : 10;
+    return nice * mag;
+  }
+  function shortDate(s) {
+    const d = new Date(s + 'T00:00:00Z');
+    return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+  }
+})();
+</script>
+</body>
+</html>

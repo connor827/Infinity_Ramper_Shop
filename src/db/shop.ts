@@ -1,0 +1,1123 @@
+import pg from 'pg';
+import { query, withTransaction } from './pool.js';
+import type { Product, Buyer, Order, CartItem, ShippingAddress, ProductCategory, ProductCategoryWithCount, ShippingOption, ShippingOptionWithEffectivePrice } from '../types/index.js';
+
+// ------------------------------------------------------------------
+// Products
+// ------------------------------------------------------------------
+
+export async function listActiveProducts(merchantId: string): Promise<Product[]> {
+  const { rows } = await query<Product>(
+    `SELECT * FROM products
+      WHERE merchant_id = $1 AND status = 'active' AND stock > 0
+      ORDER BY created_at DESC`,
+    [merchantId]
+  );
+  return rows;
+}
+
+// List ALL products for the merchant dashboard — includes inactive, out-of-stock.
+// Optional status filter: 'active' | 'inactive' | 'out_of_stock' | undefined (all).
+// Optional category_id filter: a UUID, or 'uncategorised' for products with no category.
+export async function listProductsForMerchant(
+  merchantId: string,
+  opts: { status?: string; search?: string; category_id?: string } = {}
+): Promise<Product[]> {
+  const values: unknown[] = [merchantId];
+  const where: string[] = ['merchant_id = $1'];
+  if (opts.status && ['active', 'inactive', 'out_of_stock'].includes(opts.status)) {
+    values.push(opts.status);
+    where.push(`status = $${values.length}`);
+  }
+  if (opts.search && opts.search.trim()) {
+    values.push(`%${opts.search.trim()}%`);
+    where.push(`name ILIKE $${values.length}`);
+  }
+  if (opts.category_id) {
+    if (opts.category_id === 'uncategorised') {
+      where.push(`category_id IS NULL`);
+    } else {
+      values.push(opts.category_id);
+      where.push(`category_id = $${values.length}`);
+    }
+  }
+  const { rows } = await query<Product>(
+    `SELECT * FROM products
+      WHERE ${where.join(' AND ')}
+      ORDER BY created_at DESC`,
+    values
+  );
+  return rows;
+}
+
+// Apply a partial update to a product. Only columns in the allow-list are updatable.
+export async function updateProduct(
+  merchantId: string,
+  productId: string,
+  patch: Partial<{
+    name: string;
+    description: string | null;
+    price: number;
+    stock: number;
+    image_url: string | null;
+    status: 'active' | 'inactive' | 'out_of_stock';
+    sku: string | null;
+    category_id: string | null;
+  }>
+): Promise<Product | null> {
+  const fields: string[] = [];
+  const values: unknown[] = [];
+  let i = 1;
+  for (const [key, value] of Object.entries(patch)) {
+    if (value === undefined) continue;
+    fields.push(`${key} = $${i++}`);
+    values.push(value);
+  }
+  if (fields.length === 0) {
+    return getProduct(merchantId, productId);
+  }
+  fields.push(`updated_at = NOW()`);
+  values.push(productId, merchantId);
+  const { rows } = await query<Product>(
+    `UPDATE products
+        SET ${fields.join(', ')}
+      WHERE id = $${i++} AND merchant_id = $${i}
+      RETURNING *`,
+    values
+  );
+  return rows[0] ?? null;
+}
+
+export async function getProduct(
+  merchantId: string,
+  productId: string
+): Promise<Product | null> {
+  const { rows } = await query<Product>(
+    'SELECT * FROM products WHERE id = $1 AND merchant_id = $2',
+    [productId, merchantId]
+  );
+  return rows[0] ?? null;
+}
+
+export async function createProduct(
+  merchantId: string,
+  data: {
+    name: string;
+    description?: string;
+    price: number;
+    currency_code: string;
+    stock: number;
+    image_url?: string;
+    category_id?: string | null;
+  }
+): Promise<Product> {
+  const { rows } = await query<Product>(
+    `INSERT INTO products (merchant_id, name, description, price, currency_code, stock, image_url, category_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+     RETURNING *`,
+    [
+      merchantId,
+      data.name,
+      data.description ?? null,
+      data.price,
+      data.currency_code,
+      data.stock,
+      data.image_url ?? null,
+      data.category_id ?? null,
+    ]
+  );
+  return rows[0];
+}
+
+// ------------------------------------------------------------------
+// Product categories
+// ------------------------------------------------------------------
+
+// List all categories for a merchant, ordered by position then name.
+// Includes a count of products in each category.
+export async function listCategoriesForMerchant(
+  merchantId: string
+): Promise<ProductCategoryWithCount[]> {
+  const { rows } = await query<ProductCategoryWithCount>(
+    `SELECT c.*, COALESCE(p.product_count, 0)::int AS product_count
+       FROM product_categories c
+       LEFT JOIN (
+         SELECT category_id, COUNT(*) AS product_count
+           FROM products
+          WHERE merchant_id = $1 AND category_id IS NOT NULL
+          GROUP BY category_id
+       ) p ON p.category_id = c.id
+      WHERE c.merchant_id = $1
+      ORDER BY c.position ASC, c.name ASC`,
+    [merchantId]
+  );
+  return rows;
+}
+
+// Create a new category. Position defaults to "after the last existing one"
+// so newly-added categories appear at the bottom of the list by default.
+export async function createCategory(
+  merchantId: string,
+  name: string
+): Promise<ProductCategory> {
+  return await withTransaction(async (client) => {
+    const { rows: posRows } = await client.query<{ next_pos: number }>(
+      `SELECT COALESCE(MAX(position), -1) + 1 AS next_pos
+         FROM product_categories
+        WHERE merchant_id = $1`,
+      [merchantId]
+    );
+    const nextPos = posRows[0]?.next_pos ?? 0;
+    const { rows } = await client.query<ProductCategory>(
+      `INSERT INTO product_categories (merchant_id, name, position)
+       VALUES ($1, $2, $3)
+       RETURNING *`,
+      [merchantId, name, nextPos]
+    );
+    return rows[0];
+  });
+}
+
+// Get a single category and confirm it belongs to the merchant.
+export async function getCategory(
+  merchantId: string,
+  categoryId: string
+): Promise<ProductCategory | null> {
+  const { rows } = await query<ProductCategory>(
+    `SELECT * FROM product_categories WHERE id = $1 AND merchant_id = $2`,
+    [categoryId, merchantId]
+  );
+  return rows[0] ?? null;
+}
+
+// Apply a partial update to a category. Only name and position are updatable.
+export async function updateCategory(
+  merchantId: string,
+  categoryId: string,
+  patch: Partial<{ name: string; position: number }>
+): Promise<ProductCategory | null> {
+  const fields: string[] = [];
+  const values: unknown[] = [];
+  let i = 1;
+  for (const [key, value] of Object.entries(patch)) {
+    if (value === undefined) continue;
+    fields.push(`${key} = $${i++}`);
+    values.push(value);
+  }
+  if (fields.length === 0) {
+    return getCategory(merchantId, categoryId);
+  }
+  values.push(categoryId, merchantId);
+  const { rows } = await query<ProductCategory>(
+    `UPDATE product_categories
+        SET ${fields.join(', ')}
+      WHERE id = $${i++} AND merchant_id = $${i}
+      RETURNING *`,
+    values
+  );
+  return rows[0] ?? null;
+}
+
+// Delete a category. ON DELETE SET NULL on the FK in products takes care of
+// detaching products — they fall back to "uncategorised".
+export async function deleteCategory(
+  merchantId: string,
+  categoryId: string
+): Promise<boolean> {
+  const { rowCount } = await query(
+    `DELETE FROM product_categories WHERE id = $1 AND merchant_id = $2`,
+    [categoryId, merchantId]
+  );
+  return (rowCount ?? 0) > 0;
+}
+
+// Reorder several categories at once. Takes a list of {id, position} pairs
+// and applies them in a single transaction. Any IDs not belonging to the
+// merchant are silently skipped.
+export async function reorderCategories(
+  merchantId: string,
+  order: Array<{ id: string; position: number }>
+): Promise<void> {
+  if (order.length === 0) return;
+  await withTransaction(async (client) => {
+    for (const item of order) {
+      await client.query(
+        `UPDATE product_categories
+            SET position = $1
+          WHERE id = $2 AND merchant_id = $3`,
+        [item.position, item.id, merchantId]
+      );
+    }
+  });
+}
+
+// ------------------------------------------------------------------
+// Shipping options
+// ------------------------------------------------------------------
+
+// List the merchant's shipping options in display order. Returned with raw
+// price strings — use listShippingOptionsWithEffectivePrice when you need
+// the threshold logic resolved.
+export async function listShippingOptions(
+  merchantId: string
+): Promise<ShippingOption[]> {
+  const { rows } = await query<ShippingOption>(
+    `SELECT * FROM shipping_options
+      WHERE merchant_id = $1
+      ORDER BY position ASC, name ASC`,
+    [merchantId]
+  );
+  return rows;
+}
+
+// List shipping options with the threshold logic already applied for the
+// supplied subtotal. Each option gets:
+//   - effective_price: 0 if free_threshold is set and subtotal >= threshold,
+//                       otherwise the option's normal price
+//   - is_free: convenience boolean
+// The bot iterates over this and just prints the prices it gets back.
+export async function listShippingOptionsWithEffectivePrice(
+  merchantId: string,
+  subtotal: number
+): Promise<ShippingOptionWithEffectivePrice[]> {
+  const opts = await listShippingOptions(merchantId);
+  return opts.map((o) => {
+    const threshold = o.free_threshold !== null ? Number(o.free_threshold) : null;
+    const isFree = threshold !== null && subtotal >= threshold;
+    return {
+      ...o,
+      effective_price: isFree ? 0 : Number(o.price),
+      is_free: isFree,
+    };
+  });
+}
+
+export async function createShippingOption(
+  merchantId: string,
+  data: { name: string; price: number; free_threshold?: number | null }
+): Promise<ShippingOption> {
+  return await withTransaction(async (client) => {
+    const { rows: posRows } = await client.query<{ next_pos: number }>(
+      `SELECT COALESCE(MAX(position), -1) + 1 AS next_pos
+         FROM shipping_options
+        WHERE merchant_id = $1`,
+      [merchantId]
+    );
+    const nextPos = posRows[0]?.next_pos ?? 0;
+    const { rows } = await client.query<ShippingOption>(
+      `INSERT INTO shipping_options (merchant_id, name, price, free_threshold, position)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING *`,
+      [merchantId, data.name, data.price, data.free_threshold ?? null, nextPos]
+    );
+    return rows[0];
+  });
+}
+
+export async function getShippingOption(
+  merchantId: string,
+  optionId: string
+): Promise<ShippingOption | null> {
+  const { rows } = await query<ShippingOption>(
+    `SELECT * FROM shipping_options WHERE id = $1 AND merchant_id = $2`,
+    [optionId, merchantId]
+  );
+  return rows[0] ?? null;
+}
+
+export async function updateShippingOption(
+  merchantId: string,
+  optionId: string,
+  patch: Partial<{
+    name: string;
+    price: number;
+    free_threshold: number | null;
+    position: number;
+  }>
+): Promise<ShippingOption | null> {
+  const fields: string[] = [];
+  const values: unknown[] = [];
+  let i = 1;
+  for (const [key, value] of Object.entries(patch)) {
+    if (value === undefined) continue;
+    fields.push(`${key} = $${i++}`);
+    values.push(value);
+  }
+  if (fields.length === 0) {
+    return getShippingOption(merchantId, optionId);
+  }
+  values.push(optionId, merchantId);
+  const { rows } = await query<ShippingOption>(
+    `UPDATE shipping_options
+        SET ${fields.join(', ')}
+      WHERE id = $${i++} AND merchant_id = $${i}
+      RETURNING *`,
+    values
+  );
+  return rows[0] ?? null;
+}
+
+export async function deleteShippingOption(
+  merchantId: string,
+  optionId: string
+): Promise<boolean> {
+  const { rowCount } = await query(
+    `DELETE FROM shipping_options WHERE id = $1 AND merchant_id = $2`,
+    [optionId, merchantId]
+  );
+  return (rowCount ?? 0) > 0;
+}
+
+export async function reorderShippingOptions(
+  merchantId: string,
+  order: Array<{ id: string; position: number }>
+): Promise<void> {
+  if (order.length === 0) return;
+  await withTransaction(async (client) => {
+    for (const item of order) {
+      await client.query(
+        `UPDATE shipping_options
+            SET position = $1
+          WHERE id = $2 AND merchant_id = $3`,
+        [item.position, item.id, merchantId]
+      );
+    }
+  });
+}
+
+// ------------------------------------------------------------------
+// Buyers
+// ------------------------------------------------------------------
+
+export async function upsertBuyer(
+  merchantId: string,
+  telegramId: number,
+  username: string | null,
+  firstName: string | null
+): Promise<Buyer> {
+  const { rows } = await query<Buyer>(
+    `INSERT INTO buyers (merchant_id, telegram_id, username, first_name)
+     VALUES ($1, $2, $3, $4)
+     ON CONFLICT (merchant_id, telegram_id)
+     DO UPDATE SET username = EXCLUDED.username,
+                   first_name = EXCLUDED.first_name,
+                   last_seen_at = NOW()
+     RETURNING *`,
+    [merchantId, telegramId, username, firstName]
+  );
+  return rows[0];
+}
+
+// ------------------------------------------------------------------
+// Customer listing (for merchant dashboard)
+// ------------------------------------------------------------------
+
+export interface CustomerListItem {
+  id: string;
+  telegram_id: number;
+  username: string | null;
+  first_name: string | null;
+  first_order_at: Date | null;
+  last_order_at: Date | null;
+  order_count: number;
+  total_spent: string;    // sum of paid orders only, in merchant's currency
+  last_seen_at: Date;
+}
+
+// Returns one row per buyer who has placed any order with this merchant (paid or not).
+// Buyers who tapped /start but never ordered are excluded — most merchants won't
+// care to see them.
+export async function listCustomersForMerchant(
+  merchantId: string,
+  opts: { search?: string } = {}
+): Promise<CustomerListItem[]> {
+  const values: unknown[] = [merchantId];
+  const where: string[] = ['b.merchant_id = $1'];
+  if (opts.search && opts.search.trim()) {
+    values.push(`%${opts.search.trim()}%`);
+    where.push(`(b.username ILIKE $${values.length} OR b.first_name ILIKE $${values.length})`);
+  }
+  const { rows } = await query<{
+    id: string;
+    telegram_id: string;
+    username: string | null;
+    first_name: string | null;
+    first_order_at: Date | null;
+    last_order_at: Date | null;
+    order_count: string;
+    total_spent: string;
+    last_seen_at: Date;
+  }>(
+    `SELECT b.id, b.telegram_id::text AS telegram_id, b.username, b.first_name, b.last_seen_at,
+            MIN(o.created_at) AS first_order_at,
+            MAX(o.created_at) AS last_order_at,
+            COUNT(o.id)::text AS order_count,
+            COALESCE(SUM(
+              CASE WHEN o.status IN ('paid', 'processing', 'shipped', 'delivered') THEN o.total
+                   ELSE 0 END
+            ), 0)::text AS total_spent
+       FROM buyers b
+       INNER JOIN orders o ON o.buyer_id = b.id
+      WHERE ${where.join(' AND ')}
+      GROUP BY b.id
+      ORDER BY last_order_at DESC NULLS LAST`,
+    values
+  );
+  return rows.map(r => ({
+    id: r.id,
+    telegram_id: Number(r.telegram_id),
+    username: r.username,
+    first_name: r.first_name,
+    first_order_at: r.first_order_at,
+    last_order_at: r.last_order_at,
+    order_count: Number(r.order_count),
+    total_spent: r.total_spent,
+    last_seen_at: r.last_seen_at,
+  }));
+}
+
+// One customer's full picture — used for the drill-down view.
+export interface CustomerDetail {
+  buyer: CustomerListItem;
+  orders: Array<{
+    id: string;
+    order_number: number;
+    total: string;
+    currency_code: string;
+    status: string;
+    created_at: Date;
+    paid_at: Date | null;
+  }>;
+}
+
+export async function getCustomerDetail(
+  merchantId: string,
+  buyerId: string
+): Promise<CustomerDetail | null> {
+  const customers = await listCustomersForMerchant(merchantId);
+  const buyer = customers.find(c => c.id === buyerId);
+  if (!buyer) return null;
+
+  const { rows } = await query<{
+    id: string;
+    order_number: number;
+    total: string;
+    currency_code: string;
+    status: string;
+    created_at: Date;
+    paid_at: Date | null;
+  }>(
+    `SELECT id, order_number, total, currency_code, status, created_at, paid_at
+       FROM orders
+      WHERE buyer_id = $1 AND merchant_id = $2
+      ORDER BY created_at DESC`,
+    [buyerId, merchantId]
+  );
+
+  return { buyer, orders: rows };
+}
+
+// ------------------------------------------------------------------
+// Carts
+// ------------------------------------------------------------------
+
+async function getOrCreateCart(
+  client: pg.PoolClient,
+  merchantId: string,
+  buyerId: string
+): Promise<string> {
+  const existing = await client.query<{ id: string }>(
+    'SELECT id FROM carts WHERE buyer_id = $1',
+    [buyerId]
+  );
+  if (existing.rows[0]) return existing.rows[0].id;
+
+  const created = await client.query<{ id: string }>(
+    `INSERT INTO carts (merchant_id, buyer_id) VALUES ($1, $2) RETURNING id`,
+    [merchantId, buyerId]
+  );
+  return created.rows[0].id;
+}
+
+export async function addToCart(
+  merchantId: string,
+  buyerId: string,
+  productId: string,
+  quantity: number
+): Promise<void> {
+  await withTransaction(async (client) => {
+    const productRes = await client.query<{ price: string; stock: number }>(
+      'SELECT price, stock FROM products WHERE id = $1 AND merchant_id = $2 FOR UPDATE',
+      [productId, merchantId]
+    );
+    const product = productRes.rows[0];
+    if (!product) throw new Error('Product not found');
+    if (product.stock < quantity) throw new Error('Insufficient stock');
+
+    const cartId = await getOrCreateCart(client, merchantId, buyerId);
+
+    await client.query(
+      `INSERT INTO cart_items (cart_id, product_id, quantity, unit_price)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (cart_id, product_id)
+       DO UPDATE SET quantity = cart_items.quantity + EXCLUDED.quantity`,
+      [cartId, productId, quantity, product.price]
+    );
+  });
+}
+
+export async function getCart(buyerId: string): Promise<CartItem[]> {
+  const { rows } = await query<CartItem>(
+    `SELECT ci.id, ci.cart_id, ci.product_id, ci.quantity, ci.unit_price,
+            p.name AS product_name, p.image_url AS product_image, p.stock AS product_stock
+       FROM cart_items ci
+       JOIN carts c ON ci.cart_id = c.id
+       JOIN products p ON ci.product_id = p.id
+      WHERE c.buyer_id = $1
+      ORDER BY ci.created_at ASC`,
+    [buyerId]
+  );
+  return rows;
+}
+
+export async function clearCart(buyerId: string): Promise<void> {
+  await query(
+    `DELETE FROM cart_items
+      WHERE cart_id IN (SELECT id FROM carts WHERE buyer_id = $1)`,
+    [buyerId]
+  );
+}
+
+export async function removeCartItem(buyerId: string, productId: string): Promise<void> {
+  await query(
+    `DELETE FROM cart_items
+      WHERE product_id = $1
+        AND cart_id IN (SELECT id FROM carts WHERE buyer_id = $2)`,
+    [productId, buyerId]
+  );
+}
+
+// Set the exact quantity for a cart line — used by the +/- buttons in the
+// cart view. If quantity drops to 0, the line is deleted (matches what a
+// buyer would expect from tapping − on a quantity of 1).
+//
+// Throws if quantity exceeds available stock so the caller can surface a
+// clear error to the buyer rather than silently capping.
+export async function setCartItemQuantity(
+  buyerId: string,
+  productId: string,
+  quantity: number
+): Promise<void> {
+  if (quantity < 0) throw new Error('Invalid quantity');
+  if (quantity === 0) {
+    await removeCartItem(buyerId, productId);
+    return;
+  }
+  await withTransaction(async (client) => {
+    // Lock the product row so concurrent stock changes can't slip past us.
+    const prodRes = await client.query<{ stock: number; merchant_id: string }>(
+      `SELECT p.stock, p.merchant_id
+         FROM products p
+         JOIN cart_items ci ON ci.product_id = p.id
+         JOIN carts c ON ci.cart_id = c.id
+        WHERE c.buyer_id = $1 AND p.id = $2
+        FOR UPDATE OF p`,
+      [buyerId, productId]
+    );
+    const prod = prodRes.rows[0];
+    if (!prod) throw new Error('Product not in cart');
+    if (prod.stock < quantity) throw new Error('Insufficient stock');
+
+    await client.query(
+      `UPDATE cart_items
+          SET quantity = $1
+        WHERE product_id = $2
+          AND cart_id IN (SELECT id FROM carts WHERE buyer_id = $3)`,
+      [quantity, productId, buyerId]
+    );
+  });
+}
+
+// ------------------------------------------------------------------
+// Orders
+// ------------------------------------------------------------------
+
+/**
+ * Create an order from the buyer's cart. Does NOT yet reserve a Ramper
+ * payment address — that happens in a second step after this returns,
+ * because we need the order ID to build the Ramper callback URL.
+ */
+export async function createOrderFromCart(
+  merchantId: string,
+  buyerId: string,
+  shippingAddress: ShippingAddress,
+  shipping: number,
+  currencyCode: string,
+  shippingOptionName: string | null = null
+): Promise<Order> {
+  return withTransaction(async (client) => {
+    const itemsRes = await client.query<{
+      product_id: string;
+      product_name: string;
+      quantity: number;
+      unit_price: string;
+    }>(
+      `SELECT ci.product_id, p.name AS product_name, ci.quantity, ci.unit_price
+         FROM cart_items ci
+         JOIN carts c ON ci.cart_id = c.id
+         JOIN products p ON ci.product_id = p.id
+        WHERE c.buyer_id = $1
+          FOR UPDATE`,
+      [buyerId]
+    );
+
+    if (itemsRes.rows.length === 0) {
+      throw new Error('Cart is empty');
+    }
+
+    for (const item of itemsRes.rows) {
+      const stockUpdate = await client.query<{ stock: number }>(
+        `UPDATE products
+            SET stock = stock - $1
+          WHERE id = $2 AND merchant_id = $3 AND stock >= $1
+          RETURNING stock`,
+        [item.quantity, item.product_id, merchantId]
+      );
+      if (stockUpdate.rowCount === 0) {
+        throw new Error(`Insufficient stock for ${item.product_name}`);
+      }
+    }
+
+    const subtotal = itemsRes.rows.reduce(
+      (sum, item) => sum + Number(item.unit_price) * item.quantity,
+      0
+    );
+    const total = subtotal + shipping;
+
+    const orderRes = await client.query<Order>(
+      `INSERT INTO orders (
+         merchant_id, buyer_id,
+         subtotal, shipping, total, currency_code,
+         shipping_address, shipping_option_name
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       RETURNING *`,
+      [merchantId, buyerId, subtotal, shipping, total, currencyCode, shippingAddress, shippingOptionName]
+    );
+    const order = orderRes.rows[0];
+
+    for (const item of itemsRes.rows) {
+      await client.query(
+        `INSERT INTO order_items (
+           order_id, product_id, product_name,
+           quantity, unit_price, line_total
+         ) VALUES ($1, $2, $3, $4, $5, $6)`,
+        [
+          order.id,
+          item.product_id,
+          item.product_name,
+          item.quantity,
+          item.unit_price,
+          Number(item.unit_price) * item.quantity,
+        ]
+      );
+    }
+
+    await client.query(
+      `DELETE FROM cart_items
+        WHERE cart_id IN (SELECT id FROM carts WHERE buyer_id = $1)`,
+      [buyerId]
+    );
+
+    return order;
+  });
+}
+
+export async function attachRamperToOrder(
+  orderId: string,
+  data: {
+    ramper_address_in: string;
+    ramper_polygon_addr: string;
+    payment_url: string;
+  }
+): Promise<void> {
+  await query(
+    `UPDATE orders
+        SET ramper_address_in = $2, ramper_polygon_addr = $3,
+            payment_url = $4
+      WHERE id = $1`,
+    [orderId, data.ramper_address_in, data.ramper_polygon_addr, data.payment_url]
+  );
+}
+
+export async function getOrder(merchantId: string, orderId: string): Promise<Order | null> {
+  const { rows } = await query<Order>(
+    'SELECT * FROM orders WHERE id = $1 AND merchant_id = $2',
+    [orderId, merchantId]
+  );
+  return rows[0] ?? null;
+}
+
+export async function getOrderById(orderId: string): Promise<Order | null> {
+  const { rows } = await query<Order>('SELECT * FROM orders WHERE id = $1', [orderId]);
+  return rows[0] ?? null;
+}
+
+export async function markOrderPaid(
+  orderId: string,
+  data: { value_coin: number; txid_in: string; txid_out: string }
+): Promise<boolean> {
+  const res = await query(
+    `UPDATE orders
+        SET status = 'paid',
+            paid_at = NOW(),
+            value_coin_received = $2,
+            txid_in = $3,
+            txid_out = $4
+      WHERE id = $1 AND status = 'awaiting_payment'`,
+    [orderId, data.value_coin, data.txid_in, data.txid_out]
+  );
+  return res.rowCount > 0;
+}
+
+export async function getRecentOrdersForMerchant(
+  merchantId: string,
+  limit = 50
+): Promise<Order[]> {
+  const { rows } = await query<Order>(
+    `SELECT * FROM orders
+      WHERE merchant_id = $1
+      ORDER BY created_at DESC
+      LIMIT $2`,
+    [merchantId, limit]
+  );
+  return rows;
+}
+
+// ------------------------------------------------------------------
+// Orders management (dashboard)
+// ------------------------------------------------------------------
+
+export interface OrderFilters {
+  status?: string;
+  since?: Date;
+  until?: Date;
+  search?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export interface OrderListItem extends Order {
+  item_count: number;
+  buyer_telegram_username: string | null;
+  buyer_telegram_first_name: string | null;
+}
+
+export async function listOrdersForMerchant(
+  merchantId: string,
+  filters: OrderFilters = {}
+): Promise<OrderListItem[]> {
+  const where: string[] = ['o.merchant_id = $1'];
+  const params: unknown[] = [merchantId];
+  let i = 2;
+
+  if (filters.status) {
+    where.push(`o.status = $${i++}`);
+    params.push(filters.status);
+  }
+  if (filters.since) {
+    where.push(`o.created_at >= $${i++}`);
+    params.push(filters.since);
+  }
+  if (filters.until) {
+    where.push(`o.created_at <= $${i++}`);
+    params.push(filters.until);
+  }
+  if (filters.search) {
+    where.push(
+      `(b.first_name ILIKE $${i} OR b.username ILIKE $${i} OR CAST(o.order_number AS TEXT) = $${i})`
+    );
+    params.push(`%${filters.search}%`);
+    i++;
+  }
+
+  const limit = Math.min(filters.limit ?? 50, 200);
+  const offset = filters.offset ?? 0;
+
+  const { rows } = await query<OrderListItem>(
+    `SELECT o.*,
+            COALESCE(item_counts.count, 0)::int AS item_count,
+            b.username AS buyer_telegram_username,
+            b.first_name AS buyer_telegram_first_name
+       FROM orders o
+       JOIN buyers b ON b.id = o.buyer_id
+       LEFT JOIN (
+         SELECT order_id, COUNT(*) AS count
+           FROM order_items GROUP BY order_id
+       ) item_counts ON item_counts.order_id = o.id
+      WHERE ${where.join(' AND ')}
+      ORDER BY o.created_at DESC
+      LIMIT ${limit} OFFSET ${offset}`,
+    params
+  );
+  return rows;
+}
+
+export async function countOrdersForMerchant(
+  merchantId: string,
+  filters: Omit<OrderFilters, 'limit' | 'offset'> = {}
+): Promise<number> {
+  const where: string[] = ['o.merchant_id = $1'];
+  const params: unknown[] = [merchantId];
+  let i = 2;
+
+  if (filters.status) {
+    where.push(`o.status = $${i++}`);
+    params.push(filters.status);
+  }
+  if (filters.since) {
+    where.push(`o.created_at >= $${i++}`);
+    params.push(filters.since);
+  }
+  if (filters.until) {
+    where.push(`o.created_at <= $${i++}`);
+    params.push(filters.until);
+  }
+  if (filters.search) {
+    where.push(
+      `(b.first_name ILIKE $${i} OR b.username ILIKE $${i} OR CAST(o.order_number AS TEXT) = $${i})`
+    );
+    params.push(`%${filters.search}%`);
+    i++;
+  }
+
+  const { rows } = await query<{ count: string }>(
+    `SELECT COUNT(*)::text AS count
+       FROM orders o JOIN buyers b ON b.id = o.buyer_id
+      WHERE ${where.join(' AND ')}`,
+    params
+  );
+  return Number(rows[0]?.count ?? 0);
+}
+
+export interface OrderDetail extends Order {
+  buyer_telegram_id: number | null;
+  buyer_telegram_username: string | null;
+  buyer_telegram_first_name: string | null;
+  items: Array<{
+    id: string;
+    product_id: string;
+    product_name: string;
+    quantity: number;
+    unit_price: string;
+    line_total: string;
+  }>;
+}
+
+export async function getOrderDetail(
+  merchantId: string,
+  orderId: string
+): Promise<OrderDetail | null> {
+  const { rows } = await query<OrderDetail>(
+    `SELECT o.*,
+            b.telegram_id AS buyer_telegram_id,
+            b.username AS buyer_telegram_username,
+            b.first_name AS buyer_telegram_first_name
+       FROM orders o
+       JOIN buyers b ON b.id = o.buyer_id
+      WHERE o.merchant_id = $1 AND o.id = $2
+      LIMIT 1`,
+    [merchantId, orderId]
+  );
+  if (rows.length === 0) return null;
+  const order = rows[0];
+
+  const { rows: items } = await query<{
+    id: string;
+    product_id: string;
+    product_name: string;
+    quantity: number;
+    unit_price: string;
+    line_total: string;
+  }>(
+    `SELECT id, product_id, product_name, quantity,
+            unit_price::text, line_total::text
+       FROM order_items WHERE order_id = $1`,
+    [orderId]
+  );
+  order.items = items;
+  return order;
+}
+
+export async function updateOrderStatus(
+  merchantId: string,
+  orderId: string,
+  status: string,
+  extras: {
+    tracking_number?: string;
+    tracking_carrier?: string;
+    tracking_url?: string;
+    merchant_notes?: string;
+    refund_amount?: number;
+  } = {}
+): Promise<void> {
+  const sets: string[] = ['status = $1', 'updated_at = NOW()'];
+  const params: unknown[] = [status];
+  let i = 2;
+
+  // Status-specific timestamps
+  if (status === 'shipped') sets.push(`shipped_at = COALESCE(shipped_at, NOW())`);
+  if (status === 'delivered') sets.push(`delivered_at = COALESCE(delivered_at, NOW())`);
+  if (status === 'cancelled') sets.push(`cancelled_at = COALESCE(cancelled_at, NOW())`);
+  if (status === 'refunded') sets.push(`refunded_at = COALESCE(refunded_at, NOW())`);
+
+  if (extras.tracking_number !== undefined) {
+    sets.push(`tracking_number = $${i++}`);
+    params.push(extras.tracking_number || null);
+  }
+  if (extras.tracking_carrier !== undefined) {
+    sets.push(`tracking_carrier = $${i++}`);
+    params.push(extras.tracking_carrier || null);
+  }
+  if (extras.tracking_url !== undefined) {
+    sets.push(`tracking_url = $${i++}`);
+    params.push(extras.tracking_url || null);
+  }
+  if (extras.merchant_notes !== undefined) {
+    sets.push(`merchant_notes = $${i++}`);
+    params.push(extras.merchant_notes || null);
+  }
+  if (extras.refund_amount !== undefined) {
+    sets.push(`refund_amount = $${i++}`);
+    params.push(extras.refund_amount);
+  }
+
+  params.push(merchantId, orderId);
+  await query(
+    `UPDATE orders SET ${sets.join(', ')}
+      WHERE merchant_id = $${i++} AND id = $${i}`,
+    params
+  );
+}
+
+// ------------------------------------------------------------------
+// Metrics (for dashboard overview)
+// ------------------------------------------------------------------
+
+export interface MerchantMetrics {
+  revenue_today: string;
+  revenue_week: string;
+  revenue_month: string;
+  orders_today: number;
+  orders_week: number;
+  orders_month: number;
+  orders_awaiting_fulfilment: number;
+  total_buyers: number;
+  total_products: number;
+  total_orders_all_time: number;
+  low_stock_products: number;
+  // Last 30 days, one point per day — for chart
+  revenue_series: Array<{ date: string; revenue: string; orders: number }>;
+}
+
+export async function getMerchantMetrics(merchantId: string): Promise<MerchantMetrics> {
+  const { rows: agg } = await query<{
+    revenue_today: string;
+    revenue_week: string;
+    revenue_month: string;
+    orders_today: string;
+    orders_week: string;
+    orders_month: string;
+    orders_awaiting_fulfilment: string;
+  }>(
+    `SELECT
+       COALESCE(SUM(CASE WHEN paid_at >= date_trunc('day', NOW()) THEN total END), 0)::text AS revenue_today,
+       COALESCE(SUM(CASE WHEN paid_at >= NOW() - interval '7 days' THEN total END), 0)::text AS revenue_week,
+       COALESCE(SUM(CASE WHEN paid_at >= NOW() - interval '30 days' THEN total END), 0)::text AS revenue_month,
+       COUNT(CASE WHEN paid_at >= date_trunc('day', NOW()) THEN 1 END)::text AS orders_today,
+       COUNT(CASE WHEN paid_at >= NOW() - interval '7 days' THEN 1 END)::text AS orders_week,
+       COUNT(CASE WHEN paid_at >= NOW() - interval '30 days' THEN 1 END)::text AS orders_month,
+       COUNT(CASE WHEN status IN ('paid', 'processing') THEN 1 END)::text AS orders_awaiting_fulfilment
+       FROM orders WHERE merchant_id = $1`,
+    [merchantId]
+  );
+
+  const { rows: buyerCountRows } = await query<{ count: string }>(
+    `SELECT COUNT(DISTINCT b.id)::text AS count
+       FROM buyers b WHERE b.merchant_id = $1`,
+    [merchantId]
+  );
+
+  const { rows: lowStockRows } = await query<{ count: string }>(
+    `SELECT COUNT(*)::text AS count
+       FROM products WHERE merchant_id = $1 AND status = 'active' AND stock <= 5`,
+    [merchantId]
+  );
+
+  const { rows: productCountRows } = await query<{ count: string }>(
+    `SELECT COUNT(*)::text AS count
+       FROM products WHERE merchant_id = $1 AND status != 'inactive'`,
+    [merchantId]
+  );
+
+  const { rows: allOrdersRows } = await query<{ count: string }>(
+    `SELECT COUNT(*)::text AS count
+       FROM orders WHERE merchant_id = $1`,
+    [merchantId]
+  );
+
+  const { rows: series } = await query<{
+    date: string;
+    revenue: string;
+    orders: string;
+  }>(
+    `WITH days AS (
+       SELECT generate_series(
+         (NOW() - interval '29 days')::date,
+         NOW()::date,
+         '1 day'
+       )::date AS d
+     )
+     SELECT to_char(days.d, 'YYYY-MM-DD') AS date,
+            COALESCE(SUM(o.total), 0)::text AS revenue,
+            COUNT(o.id)::text AS orders
+       FROM days
+       LEFT JOIN orders o
+         ON o.merchant_id = $1
+        AND o.paid_at::date = days.d
+      GROUP BY days.d ORDER BY days.d`,
+    [merchantId]
+  );
+
+  const a = agg[0]!;
+  return {
+    revenue_today: a.revenue_today,
+    revenue_week: a.revenue_week,
+    revenue_month: a.revenue_month,
+    orders_today: Number(a.orders_today),
+    orders_week: Number(a.orders_week),
+    orders_month: Number(a.orders_month),
+    orders_awaiting_fulfilment: Number(a.orders_awaiting_fulfilment),
+    total_buyers: Number(buyerCountRows[0]?.count ?? 0),
+    total_products: Number(productCountRows[0]?.count ?? 0),
+    total_orders_all_time: Number(allOrdersRows[0]?.count ?? 0),
+    low_stock_products: Number(lowStockRows[0]?.count ?? 0),
+    revenue_series: series.map((r) => ({
+      date: r.date,
+      revenue: r.revenue,
+      orders: Number(r.orders),
+    })),
+  };
+}
+
+export async function recordRamperCallback(
+  orderId: string | null,
+  data: { value_coin: number | null; coin: string | null; txid_in: string; txid_out: string },
+  rawQuery: Record<string, string>
+): Promise<void> {
+  await query(
+    `INSERT INTO ramper_callbacks (order_id, value_coin, coin, txid_in, txid_out, raw_query)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     ON CONFLICT (txid_in) DO NOTHING`,
+    [orderId, data.value_coin, data.coin, data.txid_in, data.txid_out, rawQuery]
+  );
+}

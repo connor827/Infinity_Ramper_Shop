@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1350" viewBox="0 0 1080 1350" role="img" aria-label="Infinity Ramper — Take card payments. Skip the banks.">
+  <title>Infinity Ramper — portrait post template</title>
+  <desc>1080x1350 portrait Instagram post (4:5). Punchier copy: "Take card payments. Skip the banks." with "Skip the banks." in amber italic. Supporting mechanic description below.</desc>
+
+  <rect width="1080" height="1350" fill="#f0ede6"/>
+
+  <line x1="100" y1="160" x2="128" y2="160" stroke="#bbbbbb" stroke-width="1.5"/>
+  <text x="144" y="165" font-family="'Funnel Display','Helvetica Neue',Arial,sans-serif" font-weight="500" font-size="18" letter-spacing="2.2" fill="#bbbbbb">INFINITY RAMPER</text>
+
+  <text x="100" y="500" font-family="'Funnel Display',serif" font-size="118" font-weight="500" letter-spacing="-4.7" fill="#0a0a0a">Take card</text>
+  <text x="100" y="625" font-family="'Funnel Display',serif" font-size="118" font-weight="500" letter-spacing="-4.7" fill="#0a0a0a">payments.</text>
+  <text x="100" y="775" font-family="'Funnel Display',serif" font-size="118" font-weight="300" font-style="italic" letter-spacing="-3.5" fill="#FFAC1C">Skip the banks.</text>
+
+  <text x="100" y="930" font-family="'Funnel Display',serif" font-size="32" font-weight="400" letter-spacing="-0.96" fill="#555555">Customers pay with card, Apple Pay, or bank.</text>
+  <text x="100" y="975" font-family="'Funnel Display',serif" font-size="32" font-weight="400" letter-spacing="-0.96" fill="#555555">USDC settles to your wallet in ~10 seconds.</text>
+  <text x="100" y="1020" font-family="'Funnel Display',serif" font-size="32" font-weight="400" letter-spacing="-0.96" fill="#555555">No custody, no freezes, no chargebacks.</text>
+
+  <circle cx="120" cy="1260" r="5" fill="#FFAC1C"/>
+  <text x="140" y="1265" font-family="'IBM Plex Mono',monospace" font-size="19" fill="#555555">infinityramper.com</text>
+  <text x="980" y="1265" font-family="'IBM Plex Mono',monospace" font-size="19" fill="#555555" text-anchor="end">150+ countries</text>
+</svg>

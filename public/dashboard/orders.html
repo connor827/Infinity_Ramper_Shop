@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Orders — Infinity Ramper Shops</title>
+<link rel="stylesheet" href="/assets/branding.css">
+</head>
+<body>
+<div id="page"></div>
+<script src="/assets/shell.js"></script>
+<script>
+(async () => {
+  'use strict';
+  if (!Auth.require()) return;
+
+  const main = Shell.render({
+    crumbs: [{ label: 'Dashboard', href: '/dashboard' }, { label: 'Orders' }],
+  });
+
+  const STATUSES = [
+    ['', 'All statuses'],
+    ['awaiting_payment', 'Awaiting payment'],
+    ['paid', 'Paid'],
+    ['processing', 'Processing'],
+    ['shipped', 'Shipped'],
+    ['delivered', 'Delivered'],
+    ['cancelled', 'Cancelled'],
+    ['refunded', 'Refunded'],
+  ];
+
+  main.innerHTML = `
+    <div class="page-head">
+      <div>
+        <span class="eyebrow">Fulfilment</span>
+        <h1 class="display mt-2">Orders</h1>
+        <div class="meta" id="orders-meta">Loading…</div>
+      </div>
+      <div class="actions">
+        <button class="btn btn-secondary btn-sm" id="export-btn">Export CSV</button>
+      </div>
+    </div>
+
+    <div class="toolbar">
+      <input type="search" id="f-search" placeholder="Search #, buyer…"/>
+      <select id="f-status">
+        ${STATUSES.map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}
+      </select>
+      <input type="date" id="f-since" title="From"/>
+      <input type="date" id="f-until" title="To"/>
+      <button class="btn btn-ghost btn-sm" id="reset-btn">Reset</button>
+    </div>
+
+    <div id="orders-wrap" class="mb-3"><div class="empty">Loading orders…</div></div>
+
+    <div class="flex justify-between items-center" id="pager" style="display:none">
+      <span class="muted" id="pager-status"></span>
+      <div class="flex gap-2">
+        <button class="btn btn-secondary btn-sm" id="prev-btn">Prev</button>
+        <button class="btn btn-secondary btn-sm" id="next-btn">Next</button>
+      </div>
+    </div>
+
+    <div class="drawer-overlay" id="drawer-overlay"></div>
+    <div class="drawer" id="drawer" aria-hidden="true">
+      <div class="drawer-head">
+        <div>
+          <span class="eyebrow plain">Order</span>
+          <h2 class="display mt-1" id="d-number">—</h2>
+        </div>
+        <button class="btn btn-ghost btn-sm" id="d-close">Close ×</button>
+      </div>
+      <div class="drawer-body" id="d-body"></div>
+    </div>
+  `;
+
+  // Filter state
+  const state = {
+    search: '',
+    status: '',
+    since: '',
+    until: '',
+    offset: 0,
+    limit: 25,
+    total: 0,
+  };
+
+  // URL param handling
+  const urlParams = new URLSearchParams(window.location.search);
+  const openOrderId = urlParams.get('open');
+
+  const $ = id => document.getElementById(id);
+  const filterInputs = ['f-search', 'f-status', 'f-since', 'f-until'];
+  let filterTimer;
+  filterInputs.forEach(id => {
+    $(id).addEventListener('input', () => {
+      clearTimeout(filterTimer);
+      filterTimer = setTimeout(applyFilters, 250);
+    });
+  });
+  $('reset-btn').onclick = () => {
+    filterInputs.forEach(id => $(id).value = '');
+    applyFilters();
+  };
+  $('prev-btn').onclick = () => { state.offset = Math.max(0, state.offset - state.limit); load(); };
+  $('next-btn').onclick = () => { state.offset += state.limit; load(); };
+  $('export-btn').onclick = exportCsv;
+  $('d-close').onclick = closeDrawer;
+  $('drawer-overlay').onclick = closeDrawer;
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeDrawer(); });
+
+  function applyFilters() {
+    state.search = $('f-search').value.trim();
+    state.status = $('f-status').value;
+    state.since = $('f-since').value;
+    state.until = $('f-until').value;
+    state.offset = 0;
+    load();
+  }
+
+  async function load() {
+    const params = new URLSearchParams();
+    params.set('limit', String(state.limit));
+    params.set('offset', String(state.offset));
+    if (state.search) params.set('search', state.search);
+    if (state.status) params.set('status', state.status);
+    if (state.since) params.set('since', new Date(state.since).toISOString());
+    if (state.until) {
+      const u = new Date(state.until);
+      u.setHours(23, 59, 59, 999);
+      params.set('until', u.toISOString());
+    }
+
+    try {
+      const { orders, total } = await API('GET', '/orders?' + params.toString());
+      state.total = total;
+      render(orders);
+    } catch (err) {
+      Toast.err(err.message);
+    }
+  }
+
+  function render(orders) {
+    const wrap = $('orders-wrap');
+    $('orders-meta').textContent =
+      state.total === 0
+        ? 'No orders match your filters.'
+        : `${state.total} ${state.total === 1 ? 'order' : 'orders'} total`;
+
+    if (orders.length === 0) {
+      wrap.innerHTML = `<div class="empty">
+        <div class="display">Nothing here yet.</div>
+        <em>${state.search || state.status || state.since || state.until ? 'Try adjusting your filters.' : 'Orders will appear here once buyers start checking out.'}</em>
+      </div>`;
+      $('pager').style.display = 'none';
+      return;
+    }
+
+    wrap.innerHTML = `
+      <div class="table-wrap">
+        <table class="table">
+          <thead><tr>
+            <th>#</th>
+            <th>Buyer</th>
+            <th>Items</th>
+            <th>Status</th>
+            <th class="text-right">Total</th>
+            <th class="text-right">When</th>
+          </tr></thead>
+          <tbody>${orders.map(rowHtml).join('')}</tbody>
+        </table>
+      </div>`;
+
+    wrap.querySelectorAll('tr[data-id]').forEach(tr => {
+      tr.addEventListener('click', () => openOrder(tr.dataset.id));
+    });
+
+    // Pager
+    const end = state.offset + orders.length;
+    $('pager').style.display = 'flex';
+    $('pager-status').textContent = `Showing ${state.offset + 1}–${end} of ${state.total}`;
+    $('prev-btn').disabled = state.offset === 0;
+    $('next-btn').disabled = end >= state.total;
+  }
+
+  function rowHtml(o) {
+    const buyer = o.buyer_telegram_username
+      ? '@' + o.buyer_telegram_username
+      : o.buyer_telegram_first_name || '—';
+    return `<tr data-id="${Fmt.escape(o.id)}">
+      <td class="mono">#${o.order_number}</td>
+      <td>${Fmt.escape(buyer)}</td>
+      <td class="muted">${o.item_count}</td>
+      <td><span class="badge badge-${o.status.replace('_', '')}">${o.status.replace('_', ' ')}</span></td>
+      <td class="text-right num">${Fmt.money(o.total, o.currency_code)}</td>
+      <td class="text-right muted nowrap">${Fmt.relative(o.created_at)}</td>
+    </tr>`;
+  }
+
+  // --- Drawer: detail + updates ---------------------------------------
+  async function openOrder(id) {
+    const drawer = $('drawer');
+    const overlay = $('drawer-overlay');
+    const body = $('d-body');
+    drawer.classList.add('open');
+    overlay.classList.add('open');
+    drawer.setAttribute('aria-hidden', 'false');
+    body.innerHTML = `<div class="empty"><span class="spinner"></span> Loading…</div>`;
+
+    let order;
+    try {
+      order = await API('GET', '/orders/' + encodeURIComponent(id));
+    } catch (err) {
+      Toast.err(err.message);
+      closeDrawer();
+      return;
+    }
+
+    $('d-number').textContent = '#' + order.order_number;
+    body.innerHTML = renderDetail(order);
+    wireDetail(order);
+  }
+
+  function renderDetail(o) {
+    const addr = o.shipping_address || {};
+    const items = (o.items || []).map(it => `
+      <div class="flex justify-between" style="padding: 8px 0; border-bottom: 1px solid var(--border);">
+        <div>
+          <div style="font-weight:500">${Fmt.escape(it.product_name)}</div>
+          <div class="muted" style="font-size:12px">${it.quantity} × ${Fmt.money(it.unit_price, o.currency_code)}</div>
+        </div>
+        <div class="num" style="align-self:center">${Fmt.money(it.line_total, o.currency_code)}</div>
+      </div>`).join('');
+
+    const buyerLabel = o.buyer_telegram_username
+      ? '@' + o.buyer_telegram_username
+      : (o.buyer_telegram_first_name || 'Anonymous');
+
+    return `
+      <section>
+        <div class="flex justify-between items-center mb-2">
+          <span class="badge badge-${o.status.replace('_', '')}">${o.status.replace('_', ' ')}</span>
+          <span class="muted" style="font-size:12px">${Fmt.dateTime(o.created_at)}</span>
+        </div>
+
+        <dl class="kv mt-2">
+          <dt>Buyer</dt><dd>${Fmt.escape(buyerLabel)}</dd>
+          <dt>Email</dt><dd class="mono">${Fmt.escape(addr.email || '—')}</dd>
+          <dt>Total</dt><dd class="num">${Fmt.money(o.total, o.currency_code)}</dd>
+          ${o.paid_at ? `<dt>Paid</dt><dd>${Fmt.dateTime(o.paid_at)}</dd>` : ''}
+          ${o.txid_in ? `<dt>Ramper tx in</dt><dd class="mono break">${Fmt.escape(o.txid_in)}</dd>` : ''}
+          ${o.txid_out ? `<dt>Settlement tx</dt><dd class="mono break">${Fmt.escape(o.txid_out)}</dd>` : ''}
+        </dl>
+      </section>
+
+      <section>
+        <span class="eyebrow plain">Items</span>
+        <div class="mt-2">${items || '<div class="muted">No items recorded.</div>'}</div>
+      </section>
+
+      ${addr.full_name ? `<section>
+        <span class="eyebrow plain">Ship to</span>
+        <div class="mt-2" style="line-height:1.6">
+          ${Fmt.escape(addr.full_name)}<br>
+          ${Fmt.escape(addr.line_1 || '')}${addr.line_2 ? '<br>' + Fmt.escape(addr.line_2) : ''}<br>
+          ${Fmt.escape(addr.city || '')}, ${Fmt.escape(addr.postal_code || '')}<br>
+          ${Fmt.escape(addr.country || '')}
+          ${addr.phone ? '<br>' + Fmt.escape(addr.phone) : ''}
+        </div>
+      </section>` : ''}
+
+      <section>
+        <span class="eyebrow plain">Fulfilment</span>
+        <div class="mt-2">
+          <label>Status</label>
+          <select id="d-status">
+            ${['awaiting_payment','paid','processing','shipped','delivered','cancelled','refunded']
+              .map(s => `<option value="${s}" ${s === o.status ? 'selected' : ''}>${s.replace('_', ' ')}</option>`).join('')}
+          </select>
+
+          <div class="field-row mt-2">
+            <div class="field">
+              <label>Tracking carrier</label>
+              <input type="text" id="d-carrier" placeholder="Royal Mail, DHL…" value="${Fmt.escape(o.tracking_carrier || '')}"/>
+            </div>
+            <div class="field">
+              <label>Tracking number</label>
+              <input type="text" id="d-tracking" placeholder="RX123…" value="${Fmt.escape(o.tracking_number || '')}"/>
+            </div>
+          </div>
+
+          <div class="field">
+            <label>Tracking URL</label>
+            <input type="url" id="d-trackurl" placeholder="https://…" value="${Fmt.escape(o.tracking_url || '')}"/>
+          </div>
+
+          <div class="field">
+            <label>Merchant notes</label>
+            <textarea id="d-notes" placeholder="Private notes about this order…">${Fmt.escape(o.merchant_notes || '')}</textarea>
+          </div>
+
+          <div class="flex gap-2 justify-end">
+            <button class="btn btn-ghost btn-sm" id="d-cancel">Cancel</button>
+            <button class="btn btn-primary btn-sm" id="d-save">Save changes</button>
+          </div>
+        </div>
+      </section>`;
+  }
+
+  function wireDetail(order) {
+    $('d-cancel').onclick = closeDrawer;
+    $('d-save').onclick = async (e) => {
+      const btn = e.currentTarget;
+      btn.disabled = true;
+      try {
+        const body = {
+          status: $('d-status').value,
+          tracking_carrier: $('d-carrier').value.trim(),
+          tracking_number: $('d-tracking').value.trim(),
+          tracking_url: $('d-trackurl').value.trim(),
+          merchant_notes: $('d-notes').value.trim(),
+        };
+        await API('PATCH', '/orders/' + encodeURIComponent(order.id), body);
+        Toast.ok('Order updated');
+        closeDrawer();
+        load();
+      } catch (err) {
+        Toast.err(err.message);
+      } finally {
+        btn.disabled = false;
+      }
+    };
+  }
+
+  function closeDrawer() {
+    const drawer = $('drawer');
+    const overlay = $('drawer-overlay');
+    drawer.classList.remove('open');
+    overlay.classList.remove('open');
+    drawer.setAttribute('aria-hidden', 'true');
+    // Clean up URL param
+    if (window.location.search.includes('open=')) {
+      window.history.replaceState({}, '', '/dashboard/orders');
+    }
+  }
+
+  async function exportCsv() {
+    try {
+      const params = new URLSearchParams();
+      if (state.status) params.set('status', state.status);
+      if (state.since) params.set('since', new Date(state.since).toISOString());
+      if (state.until) {
+        const u = new Date(state.until);
+        u.setHours(23, 59, 59, 999);
+        params.set('until', u.toISOString());
+      }
+      const res = await fetch('/api/orders/export.csv?' + params.toString(), {
+        headers: { authorization: 'Bearer ' + Auth.token },
+      });
+      if (!res.ok) { Toast.err('Export failed'); return; }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `orders-${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      Toast.err(err.message);
+    }
+  }
+
+  await load();
+  if (openOrderId) openOrder(openOrderId);
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900" role="img" aria-label="26 payment processors, one flow.">
+  <title>Week 10 · Milestone</title>
+  <desc>Stat card highlighting the 26 integrated payment processors that route card payments into USDC settlement.</desc>
+  <rect width="1600" height="900" fill="#f0ede6"/>
+
+  <line x1="120" y1="130" x2="152" y2="130" stroke="#bbbbbb" stroke-width="1.5"/>
+  <text x="172" y="136" font-family="'Funnel Display',sans-serif" font-weight="500" font-size="17" letter-spacing="2" fill="#bbbbbb">INTEGRATED PAYMENT PROCESSORS</text>
+
+  <text x="120" y="540" font-family="'Funnel Display',serif" font-size="420" font-weight="500" letter-spacing="-16.8" fill="#0a0a0a">26</text>
+
+  <text x="620" y="410" font-family="'Funnel Display',serif" font-size="56" font-weight="500" letter-spacing="-2.24" fill="#0a0a0a">processors,</text>
+  <text x="620" y="475" font-family="'Funnel Display',serif" font-size="56" font-weight="300" font-style="italic" letter-spacing="-1.68" fill="#FFAC1C">one flow.</text>
+  <text x="620" y="560" font-family="'Funnel Display',serif" font-size="22" font-weight="400" letter-spacing="-0.66" fill="#555555">MoonPay · Ramp · Coinbase · Stripe · Transak</text>
+  <text x="620" y="594" font-family="'Funnel Display',serif" font-size="22" font-weight="400" letter-spacing="-0.66" fill="#555555">and 21 others. We route to the best rate</text>
+  <text x="620" y="628" font-family="'Funnel Display',serif" font-size="22" font-weight="400" letter-spacing="-0.66" fill="#555555">at settlement time — automatically.</text>
+
+  <text x="120" y="860" font-family="'IBM Plex Mono',monospace" font-size="15" fill="#bbbbbb">infinityramper.com · FCA-registered on-ramps</text>
+</svg>

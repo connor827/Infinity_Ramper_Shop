@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1640" height="856" viewBox="0 0 1640 856" role="img" aria-label="Infinity Ramper — Your customers pay by card. You receive USDC.">
+  <title>Infinity Ramper — Facebook cover</title>
+  <desc>Facebook cover 1640x856. Stacked three-line headline: "Your customers / pay by card." in ink, "You receive USDC." in amber italic. Supporting mono strip and URL.</desc>
+
+  <rect width="1640" height="856" fill="#f0ede6"/>
+
+  <line x1="160" y1="140" x2="188" y2="140" stroke="#bbbbbb" stroke-width="1.5"/>
+  <text x="204" y="145" font-family="'Funnel Display','Helvetica Neue',Arial,sans-serif" font-weight="500" font-size="18" letter-spacing="2.2" fill="#bbbbbb">INFINITY RAMPER · WEB3 PAYMENT INFRASTRUCTURE</text>
+
+  <text x="160" y="360" font-family="'Funnel Display',serif" font-size="120" font-weight="500" letter-spacing="-4.8" fill="#0a0a0a">Your customers</text>
+  <text x="160" y="485" font-family="'Funnel Display',serif" font-size="120" font-weight="500" letter-spacing="-4.8" fill="#0a0a0a">pay by card.</text>
+  <text x="160" y="615" font-family="'Funnel Display',serif" font-size="120" font-weight="300" font-style="italic" letter-spacing="-3.6" fill="#FFAC1C">You receive USDC.</text>
+
+  <text x="160" y="745" font-family="'IBM Plex Mono',monospace" font-size="18" fill="#555555">infinityramper.com · Polygon USDC · ~10s settlement · non-custodial</text>
+</svg>

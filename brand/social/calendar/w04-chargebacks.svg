@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900" role="img" aria-label="0% chargebacks across every merchant.">
+  <title>Week 4 · Zero chargebacks</title>
+  <desc>Large statistic card. The single number "0%" dominates the canvas with explanatory context.</desc>
+  <rect width="1600" height="900" fill="#f0ede6"/>
+  <line x1="120" y1="130" x2="152" y2="130" stroke="#bbbbbb" stroke-width="1.5"/>
+  <text x="172" y="136" font-family="'Funnel Display',sans-serif" font-weight="500" font-size="17" letter-spacing="2" fill="#bbbbbb">CHARGEBACK RATE · ALL MERCHANTS</text>
+
+  <text x="120" y="540" font-family="'Funnel Display',serif" font-size="420" font-weight="500" letter-spacing="-16.8" fill="#0a0a0a">0<tspan fill="#FFAC1C">%</tspan></text>
+
+  <text x="820" y="410" font-family="'Funnel Display',serif" font-size="56" font-weight="500" letter-spacing="-2.24" fill="#0a0a0a">Blockchain-final.</text>
+  <text x="820" y="475" font-family="'Funnel Display',serif" font-size="56" font-weight="300" font-style="italic" letter-spacing="-1.68" fill="#FFAC1C">Always.</text>
+  <text x="820" y="560" font-family="'Funnel Display',serif" font-size="22" font-weight="400" letter-spacing="-0.66" fill="#555555">Once confirmed on Polygon, a payment is</text>
+  <text x="820" y="594" font-family="'Funnel Display',serif" font-size="22" font-weight="400" letter-spacing="-0.66" fill="#555555">cryptographically irreversible. No disputes,</text>
+  <text x="820" y="628" font-family="'Funnel Display',serif" font-size="22" font-weight="400" letter-spacing="-0.66" fill="#555555">no fund freezes, no reversals.</text>
+
+  <text x="120" y="860" font-family="'IBM Plex Mono',monospace" font-size="15" fill="#bbbbbb">infinityramper.com · Polygon USDC</text>
+</svg>

@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Admin — Infinity Ramper Shops</title>
+<link rel="stylesheet" href="/assets/branding.css">
+<style>
+  /* Standalone layout for login — no dash-frame */
+  body { background: var(--bg); min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; }
+  .admin-login {
+    max-width: 400px;
+    width: 100%;
+    background: var(--bg-warm);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 40px 36px;
+  }
+  .admin-login-head {
+    text-align: center;
+    margin-bottom: 28px;
+  }
+  .admin-login-mark {
+    width: 48px;
+    height: 48px;
+    margin: 0 auto 16px;
+    border-radius: 50%;
+    background: var(--accent);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #0a0a0a;
+    font-family: 'Funnel Display', sans-serif;
+    font-weight: 600;
+    font-size: 20px;
+    letter-spacing: -0.02em;
+  }
+  .admin-login h1 {
+    font-family: 'Funnel Display', serif;
+    font-weight: 500;
+    font-size: 24px;
+    letter-spacing: -0.022em;
+    margin: 0;
+    color: var(--ink);
+  }
+  .admin-login h1 em {
+    font-style: italic;
+    font-weight: 300;
+    color: var(--accent);
+  }
+  .admin-login .sub {
+    color: var(--ink-mid);
+    font-size: 13px;
+    margin-top: 6px;
+  }
+  .admin-login .form-row { display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px; }
+  .admin-login label {
+    font-family: 'Funnel Display', sans-serif;
+    font-weight: 500;
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+  }
+  .admin-login input {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--ink);
+    font-family: 'Inter', sans-serif;
+    font-size: 14px;
+    padding: 10px 12px;
+    border-radius: 6px;
+    outline: none;
+    transition: border-color 120ms ease;
+  }
+  .admin-login input:focus { border-color: var(--accent); }
+  .admin-login .actions { margin-top: 20px; }
+  .admin-login .actions .btn { width: 100%; padding: 11px; }
+  .admin-login .error {
+    background: rgba(176, 65, 62, 0.1);
+    border: 1px solid var(--danger, #b0413e);
+    color: var(--danger, #b0413e);
+    padding: 10px 12px;
+    border-radius: 6px;
+    font-size: 13px;
+    margin-bottom: 16px;
+  }
+  .admin-login .footer {
+    text-align: center;
+    margin-top: 24px;
+    font-size: 12px;
+    color: var(--ink-faint);
+  }
+  .admin-login .footer a { color: var(--ink-faint); text-decoration: underline; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="/admin/admin-shell.js"></script>
+<script>
+(async () => {
+  'use strict';
+
+  // If already logged in, verify token and redirect
+  if (AdminAuth.token) {
+    try {
+      await AdminAPI('GET', '/me');
+      window.location.href = '/admin/overview';
+      return;
+    } catch {
+      AdminAuth.token = null;
+      // Fall through to login form
+    }
+  }
+
+  document.getElementById('root').innerHTML = `
+    <div class="admin-login">
+      <div class="admin-login-head">
+        <div class="admin-login-mark">IR</div>
+        <h1>Admin <em>console</em></h1>
+        <div class="sub">Platform operator access only.</div>
+      </div>
+
+      <div id="err" style="display:none"></div>
+
+      <form id="loginForm">
+        <div class="form-row">
+          <label for="email">Email</label>
+          <input type="email" id="email" autocomplete="username" required/>
+        </div>
+        <div class="form-row">
+          <label for="password">Password</label>
+          <input type="password" id="password" autocomplete="current-password" required/>
+        </div>
+        <div class="actions">
+          <button type="submit" class="btn btn-primary" id="submit-btn">Sign in</button>
+        </div>
+      </form>
+
+      <div class="footer">
+        This is not the merchant dashboard. <a href="/">Merchants sign in here →</a>
+      </div>
+    </div>
+  `;
+
+  document.getElementById('loginForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const err = document.getElementById('err');
+    const btn = document.getElementById('submit-btn');
+    err.style.display = 'none';
+    btn.disabled = true;
+    btn.textContent = 'Signing in…';
+    try {
+      const r = await AdminAPI('POST', '/auth/login', {
+        email: document.getElementById('email').value.trim(),
+        password: document.getElementById('password').value,
+      });
+      AdminAuth.token = r.token;
+      window.location.href = '/admin/overview';
+    } catch (ex) {
+      err.className = 'error';
+      err.style.display = 'block';
+      const m = ex.message || 'Sign in failed.';
+      // Don't echo "admin is not configured" to the UI in a confusing way
+      if (/not configured/i.test(m)) {
+        err.textContent = 'Admin access is not set up on this server. Contact the platform operator.';
+      } else if (/invalid credentials/i.test(m)) {
+        err.textContent = 'Email or password is incorrect.';
+      } else {
+        err.textContent = m;
+      }
+      btn.disabled = false;
+      btn.textContent = 'Sign in';
+    }
+  });
+})();
+</script>
+</body>
+</html>

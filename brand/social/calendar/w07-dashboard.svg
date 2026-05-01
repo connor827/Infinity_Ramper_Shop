@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900" role="img" aria-label="The Infinity Ramper merchant dashboard.">
+  <title>Week 7 · Dashboard mock</title>
+  <desc>Stylised preview of the merchant dashboard: metric tiles and a recent orders table.</desc>
+  <rect width="1600" height="900" fill="#f0ede6"/>
+
+  <line x1="120" y1="120" x2="152" y2="120" stroke="#bbbbbb" stroke-width="1.5"/>
+  <text x="172" y="126" font-family="'Funnel Display',sans-serif" font-weight="500" font-size="17" letter-spacing="2" fill="#bbbbbb">MERCHANT DASHBOARD · OVERVIEW</text>
+  <text x="120" y="220" font-family="'Funnel Display',serif" font-size="68" font-weight="500" letter-spacing="-2.72" fill="#0a0a0a">Your revenue, <tspan font-weight="300" font-style="italic" fill="#FFAC1C">as it lands.</tspan></text>
+
+  <rect x="120" y="290" width="1360" height="520" fill="#e8e5e0"/>
+  <rect x="121" y="291" width="451.33" height="179" fill="#f0ede6"/>
+  <rect x="574.33" y="291" width="451.34" height="179" fill="#f0ede6"/>
+  <rect x="1027.67" y="291" width="452.33" height="179" fill="#f0ede6"/>
+
+  <text x="155" y="340" font-family="'Funnel Display',sans-serif" font-size="13" letter-spacing="1.3" fill="#bbbbbb" font-weight="500">REVENUE · LAST 30 DAYS</text>
+  <text x="155" y="425" font-family="'Funnel Display',serif" font-size="64" font-weight="500" letter-spacing="-2.56" fill="#0a0a0a">$24,618</text>
+
+  <text x="608" y="340" font-family="'Funnel Display',sans-serif" font-size="13" letter-spacing="1.3" fill="#bbbbbb" font-weight="500">ORDERS · LAST 30 DAYS</text>
+  <text x="608" y="425" font-family="'Funnel Display',serif" font-size="64" font-weight="500" letter-spacing="-2.56" fill="#0a0a0a">312</text>
+
+  <text x="1062" y="340" font-family="'Funnel Display',sans-serif" font-size="13" letter-spacing="1.3" fill="#bbbbbb" font-weight="500">AVG SETTLEMENT</text>
+  <text x="1062" y="425" font-family="'Funnel Display',serif" font-size="64" font-weight="500" letter-spacing="-2.56" fill="#0a0a0a">9.7<tspan font-size="32" fill="#888">s</tspan></text>
+
+  <rect x="121" y="471" width="1359" height="338" fill="#f0ede6"/>
+  <text x="155" y="520" font-family="'Funnel Display',sans-serif" font-size="13" letter-spacing="1.3" fill="#bbbbbb" font-weight="500">RECENT ORDERS</text>
+
+  <line x1="155" y1="547" x2="1445" y2="547" stroke="#e8e5e0" stroke-width="1"/>
+  <text x="155" y="585" font-family="'IBM Plex Mono',monospace" font-size="15" fill="#888">#IR-4829</text>
+  <text x="380" y="585" font-family="'Funnel Display',sans-serif" font-size="17" fill="#0a0a0a">Aperture hoodie — L</text>
+  <text x="880" y="585" font-family="'Funnel Display',sans-serif" font-size="17" fill="#0a0a0a">$84.00</text>
+  <circle cx="1100" cy="580" r="4" fill="#3a7a52"/>
+  <text x="1115" y="585" font-family="'Funnel Display',sans-serif" font-size="15" fill="#555">Paid · 8s</text>
+  <text x="1325" y="585" font-family="'IBM Plex Mono',monospace" font-size="14" fill="#888">11:42 am</text>
+
+  <line x1="155" y1="608" x2="1445" y2="608" stroke="#e8e5e0" stroke-width="1"/>
+  <text x="155" y="646" font-family="'IBM Plex Mono',monospace" font-size="15" fill="#888">#IR-4828</text>
+  <text x="380" y="646" font-family="'Funnel Display',sans-serif" font-size="17" fill="#0a0a0a">Kenyan peaberry · 250g</text>
+  <text x="880" y="646" font-family="'Funnel Display',sans-serif" font-size="17" fill="#0a0a0a">$19.50</text>
+  <circle cx="1100" cy="641" r="4" fill="#3a7a52"/>
+  <text x="1115" y="646" font-family="'Funnel Display',sans-serif" font-size="15" fill="#555">Paid · 11s</text>
+  <text x="1325" y="646" font-family="'IBM Plex Mono',monospace" font-size="14" fill="#888">11:24 am</text>
+
+  <line x1="155" y1="669" x2="1445" y2="669" stroke="#e8e5e0" stroke-width="1"/>
+  <text x="155" y="707" font-family="'IBM Plex Mono',monospace" font-size="15" fill="#888">#IR-4827</text>
+  <text x="380" y="707" font-family="'Funnel Display',sans-serif" font-size="17" fill="#0a0a0a">Consulting hour</text>
+  <text x="880" y="707" font-family="'Funnel Display',sans-serif" font-size="17" fill="#0a0a0a">$240.00</text>
+  <circle cx="1100" cy="702" r="4" fill="#3a7a52"/>
+  <text x="1115" y="707" font-family="'Funnel Display',sans-serif" font-size="15" fill="#555">Paid · 9s</text>
+  <text x="1325" y="707" font-family="'IBM Plex Mono',monospace" font-size="14" fill="#888">10:58 am</text>
+
+  <line x1="155" y1="730" x2="1445" y2="730" stroke="#e8e5e0" stroke-width="1"/>
+  <text x="155" y="768" font-family="'IBM Plex Mono',monospace" font-size="15" fill="#888">#IR-4826</text>
+  <text x="380" y="768" font-family="'Funnel Display',sans-serif" font-size="17" fill="#0a0a0a">Print — "Aubade"</text>
+  <text x="880" y="768" font-family="'Funnel Display',sans-serif" font-size="17" fill="#0a0a0a">$65.00</text>
+  <circle cx="1100" cy="763" r="4" fill="#3a7a52"/>
+  <text x="1115" y="768" font-family="'Funnel Display',sans-serif" font-size="15" fill="#555">Paid · 10s</text>
+  <text x="1325" y="768" font-family="'IBM Plex Mono',monospace" font-size="14" fill="#888">10:41 am</text>
+
+  <text x="120" y="860" font-family="'IBM Plex Mono',monospace" font-size="15" fill="#bbbbbb">infinityramper.com · sample data</text>
+</svg>

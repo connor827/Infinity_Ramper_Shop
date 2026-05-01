@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="440" height="80" viewBox="0 0 440 80" role="img" aria-label="Infinity Ramper">
+  <title>Infinity Ramper</title>
+  <desc>Combined mark and wordmark, horizontal lockup, for dark backgrounds.</desc>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Funnel+Display:ital,wght@0,700;1,300&amp;display=swap');
+    .bold  { font-family: 'Funnel Display', 'Helvetica Neue', Arial, sans-serif; font-weight: 700; letter-spacing: -0.04em; fill: #f0ede6; }
+    .light { font-family: 'Funnel Display', 'Helvetica Neue', Arial, sans-serif; font-weight: 300; font-style: italic; letter-spacing: -0.03em; fill: #888888; }
+  </style>
+  <path d="M 14 52 L 30 52 A 18 18 0 1 1 60 32 L 72 32 A 28 28 0 1 0 40 60 L 20 60 A 6 6 0 0 1 14 54 Z" fill="none" stroke="#f0ede6" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>
+  <text x="96" y="52" font-size="40" class="bold">Infinity</text>
+  <text x="261" y="52" font-size="40" class="light">Ramper</text>
+</svg>
