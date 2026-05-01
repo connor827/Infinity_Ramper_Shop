@@ -111,8 +111,18 @@ process.on('SIGINT', () => shutdown('SIGINT'));
 // fail and callback queries expire, which throws more errors, which would
 // crash again. Prefer to log and recover.
 process.on('unhandledRejection', (reason) => {
-  logger.error({ err: reason }, 'unhandled promise rejection (continuing)');
+  // Spell out the actual error so Railway log viewers (which often only show
+  // the message string, not structured JSON) reveal the cause. Stack first
+  // when available, otherwise the raw value coerced to string.
+  const detail =
+    reason instanceof Error
+      ? `${reason.message}\n${reason.stack ?? ''}`
+      : typeof reason === 'string'
+      ? reason
+      : JSON.stringify(reason);
+  logger.error({ err: reason }, `unhandled promise rejection: ${detail}`);
 });
 process.on('uncaughtException', (err) => {
-  logger.error({ err }, 'uncaught exception (continuing)');
+  const detail = err instanceof Error ? `${err.message}\n${err.stack ?? ''}` : String(err);
+  logger.error({ err }, `uncaught exception: ${detail}`);
 });

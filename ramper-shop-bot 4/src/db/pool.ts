@@ -9,6 +9,18 @@ export const pool = new Pool({
   idleTimeoutMillis: 30000,
 });
 
+// On every new connection the pool establishes, set Postgres-side timeouts.
+// Without these, an INSERT against a missing column (or a transaction left
+// in 'idle in transaction') can hang forever, slowly exhausting the pool
+// until every request blocks on pool.connect(). 15s is plenty for any
+// well-behaved query in this app.
+pool.on('connect', (client) => {
+  client.query("SET statement_timeout = '15s'").catch(() => {
+    /* non-fatal — connection will still work, just less protected */
+  });
+  client.query("SET idle_in_transaction_session_timeout = '30s'").catch(() => {});
+});
+
 pool.on('error', (err) => {
   console.error('Unexpected postgres pool error', err);
 });
